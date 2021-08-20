@@ -1,24 +1,30 @@
 -- LUSP
 -- re.lua
 
+local token = '~'
 local RE = {
+    splitspace = '[^ ]+',
+
     trimspace = '^%s*(.-)%s*$',
     trimbracket = '^%((%(.-%))%)$',
-    splitspace = '[^ ]+',
-    islusp = '%b()',
-    islist = '%b[]',
-    squote = '[\"](.-)[\"]',
-    dquote = '[\'](.-)[\']',
-    string = '^[\"\'](.-)[\"\']$',
     trimlist = '^%[(.-)%]$',
     trimlusp = '^%((.-)%)$',
-    deffunc = '^%(%s*(.-)%s*%)%s+(%(.-%))$',
-    defif = '^(%(%s*.-%s*%))%s+(%(.-%))$',
-    defexpr = '^([%_%w]+)%s+(%(.-%))$',
-    defvar = '^([%_%w]+)%s*([%g%s]*)',
+
+    islusp = '%b()',
+    islist = '%b[]',
+    dquote = '[\"](.-)[\"]',
+    squote = '[\'](.-)[\']',
+    string = '^[\"\'](.-)[\"\']$',
+
     defall = '^%(%s*(.-)%s+([%g%s]+)%)$',
+    deffunc = '^%(%s*(.-)%s*%)%s*(%(.-%))$',
+    defif = '^(%(%s*.-%s*%))%s*(%(.-%))$',
+    defexpr = '^(.-)%s*(%(.-%))$',
+    defvar = '^(['..token..'%a][%w]*)%s*(.*)',
+
+    token = token,
+    var = '^'..token..'.-',
     comment = ';.-\n',
-    var = '^__.-'
 }
 
 return RE

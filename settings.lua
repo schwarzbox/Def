@@ -4,7 +4,7 @@
 local Settings = {
     VERSION = 'Lusp 0.1',
     HELP = 'Press Ctrl+C to Exit',
-    PROMPT = '>>>',
+    PROMPT = '>>> ',
 }
 
 return Settings

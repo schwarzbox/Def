@@ -2,36 +2,35 @@
 -- tests.lua
 
 local settings = require('settings')
+local RE = require('re')
 
 local unpack = table.unpack or unpack
 local utf8 = require('utf8')
 
-local Tests = {tmpfile="lusp.txt", tmpbin="lusp.bin", tmpexpr="expr.lusp"}
+local Tests = {
+    isdebug = false,
+    tmpfile="lusp.txt", tmpbin="lusp.bin", tmpexpr="expr.lusp"
+}
 
 Tests.tests = {
-    --comments
-    {'(def f "'.. Tests.tmpexpr.. '") (writefile "; (-> \'comment\')\n" f) (do f)', nil},
-    {'(def var1 (+ 42 42)) ; (def var2 (+ 2 2)) \n (-> var2)', nil},
-    --definition
-    {'(def _var_ "2") (# _var_)', 1, 'definition'},
-    {'(def (_func_ x) (-> (- 2 x))) (-> (_func_ 2))', 0},
-    {'(def lst [2 4 8 16 #t]) (type lst)', 'table'},
-    {'(def (func) (== 2 2)) (def Func (if (-> func) (-> #t) (-> #f))) (-> Func)', true},
-    {'(def (func x) (-> (+ 1 x))) (def (diff) (mut (func y) (-> (+ 2 y))) (func 1)) (-> (diff))', 3},
-    {'(def (func x) (-> (+ 1 x))) (def (same) (def (func y) (-> (+ 2 y))) (func 1)) (-> (same))', 2},
-    {'(def var "Lusp") (-> var)', 'Lusp'},
-    {'(def x 8) (def y 8) (-> (+ x y))', 16},
-    {'(def x (+ 8 8)) (def y 8) (-> (+ x y))', 24},
-    {'(def func (+ 8 8)) (-> (? func))', 'number'},
-    {'(def (func v1 v2) (-> (add v1 v2))) (func 2 2)', 4},
-    {'(def (func var) (-> var)) (+ (func 2) (func 4))', 6},
-    {'(def (func x y) ((-> x) (-> y))) (func 1 2)', 1},
-    {'(? (first [def merge]))','function'},
-    {'(? (last [def merge]))','function'},
-    {'(first [__def merge])', nil},
-    {'(def (func) ((def x 2))) (func) (-> x)', nil},
+    -- clear
+    {'( # ( get 1  "lusp" ) )', 1, 'clear'},
+    {'(? "lusp"))', 'error'},
+    {'(? "lusp)', 'error'},
+    {"(? lusp')", 'error'},
+    {'(-> "[2 4))', 'error'},
+
+    --comment
+    {'(def var1 (+ 42 42)) ; (def var2 (+ 2 2))\n (# (scope))', 1, 'comment'},
+    {'(def file "'.. Tests.tmpexpr.. '") (writefile "; (-> \'comment\')\n" file) (do file)', nil},
+    {'(def file "'.. Tests.tmpexpr.. '") (writefile "(-> \'comment\')" file) (do file)', 'comment'},
+    -- lusp&token
+    {'(? (first (keys (lusp))))', 'string'},
+    {'(def merge (+ 0 42)) (-> merge)', 42},
+    -- {'(has "'..RE.token..'v" (first (keys (lusp))))', false},
+    -- {'(.. "'..RE.token..'~" "42")','~42'},
     -- basic
-    {'(-> VERSION)', settings.VERSION, 'basic'},
+    {'(-> VERSION)', settings.VERSION .. ' ('.. _VERSION .. ')', 'basic'},
     {'(len [1 2 3])', 3},
     {'(# (range 1 8))', 8},
     {'(# (dict ["?" 2] ["Lusp" 4]))', 2},
@@ -48,7 +47,10 @@ Tests.tests = {
     {'(? [])', 'table'},
     {'(? (dict ["?" 2] ["Lusp" 4]))', 'table'},
     {'(? "show")', 'string'},
+    {'(? (first [def merge]))','function'},
+    {'(? (last [def merge]))','function'},
     {'(assert (== 2 2) "Assertion Error")', true},
+    {'def (fake) (error "error")) (def (emp) (-> #f)) (fake) (emp)', 'error'},
     {'(num "2")', 2},
     {'(str 2)', "2"},
     {'(return "")', ''},
@@ -58,13 +60,22 @@ Tests.tests = {
     {'(-> #f)', false},
     {'(-> 2 "Lusp" 42)', 2},
     {'(eval "(+ 2 2 2)")', 6},
+    {'(eval "(-> \'comment\')")', 'comment'},
     {'(eval "(merge "Lusp" "Lusp")")', "LuspLusp"},
     {'(eval "(def ct "") (for (var ["42" "L"]) (mut ct (.. ct var))) (-> ct)")', "42L"},
     {'(eval "(def (var) (-> "Lusp"))") (var)', "Lusp"},
+    {'(eval "(def var (-> "Lusp"))") (-> var)', "Lusp"},
+
     {'(def f "'.. Tests.tmpexpr.. '") (writefile "(+ 2 2)" f) (do f)', 4},
     {'(def f "'.. Tests.tmpexpr.. '") (writefile "(def (module) (-> \'Lusp\'))" f) (do f) (module)', "Lusp"},
     {'(call add 2 2)', 4},
     {'(def x 2) (def y 2) (call sub x y)', 0},
+    {'(call add "Lusp" 128)', false},
+    {'(? (last (pack (call add "Lusp" var))))', 'string'},
+    {'(show (call add "Lusp" 128)) (-> "lusp")', "lusp"},
+    {'(show (call add "Lusp" var)) (-> "lusp")', "lusp"},
+
+
     -- math
     {'(add -2 -2 -4)', -8, 'math'},
     {'(+ 2 2 2 2)', 8},
@@ -90,9 +101,11 @@ Tests.tests = {
     {'(exp 1)', math.exp(1)},
     {'(-> HUGE)', math.huge},
     {'(floor PI)', math.floor(math.pi)},
+    {'(first (fmod PI 4))', math.pi},
     {'(log 2 7)', math.log(2, 7)},
     {'(max 20 3 5 6)', 20},
     {'(min 20 3 5 6)', 3},
+    {'(first (modf PI))', 3},
     {'(-> MAXINT)', math.maxinteger},
     {'(-> MININT)', math.mininteger},
     {'(-> PI)', math.pi},
@@ -104,11 +117,8 @@ Tests.tests = {
     {'(sqrt 1)', math.sqrt(1)},
     {'(sqrt 128)', math.sqrt(128)},
     {'(tan -1)', math.tan(-1)},
-    -- nil
-    {'(-> var)', nil, 'nil'},
-    {'(-> #n)', nil},
-    {'( (if (== 4 4) (def x 1) (def y 0))) (->  y)', nil},
-    {'(def var #n) (if (-> var) (-> #t) (-> #f))', false},
+    {'(ult 42 128)', math.ult(42, 128)},
+
     -- condition
     {'(== 2 2)', true, 'condition'},
     {'(== 1 0)', false},
@@ -129,15 +139,20 @@ Tests.tests = {
     {'(! #f)', true},
     {'(! (> 2 4))', true},
     {'(if (== 4 4) (def x 1) (def y 0)) (-> x)', 1},
+    {'(if (!= (? 4 ) "string") (def x 1)) (-> x)', 1},
     {'(if (has "Lusp" (keys (dict ["Lusp" 42] [2 "42"]))) (-> 1) (-> 0))', 1},
+
     -- for
     {'(def ct 0) (for (var [2 4]) (mut ct (+ var 1))) (-> ct)', 5, 'for'},
     {'(def ct 0) (for (var (range 2 4)) (mut ct (+ var 1))) (-> ct)', 5},
     {'(def ct 0) (for (var (range 2 8)) ((if (== var 5) (break) (mut ct var)))) (-> ct)', 4},
+    {'(def ct 0) (for (var (range 2 8)) ((if (== var 5) ((continue) (mut ct var))))) (-> ct)', 0},
     {'(def ct 0) (def tab (dict ["?" 4])) (for (var tab) (mut ct (get var tab))) (-> ct)', 4},
+
     -- list
     {'(last (range 2 8))', 8, 'list'},
     {'(last (list "Lusp"))', 'p'},
+    {'(last (list "lusp lusp" " "))',  'lusp'},
     {'(first [2 4 8 16 "Lusp"])', 2},
     {'(last [2 4 8 16 "Lusp"])', "Lusp"},
     {'(? (last ["2"]))', 'string'},
@@ -152,7 +167,9 @@ Tests.tests = {
     {'(concat ["L" "U" "S" "P"])', 'LUSP'},
     {'(concat ["L" "U" "S" "P"] "|")', 'L|U|S|P'},
     {'(unpack [0 42])', 0},
+    {'(def var1 var2 var3 (unpack [2 4 8])) (-> var2)', 4},
     {'(last (pack 0 42))', 42},
+
     -- dict
     {'(def tab (dict ["?" "Lusp"] [1 2])) (# (del 1 tab))', 1, 'dict'},
     {'(def tab (dict ["?" "Lusp"])) (has "Hi" (set "?" "Hi" tab))', true},
@@ -165,6 +182,7 @@ Tests.tests = {
     {'(last (map round [2 3.1416]))', 3.14},
     {'(def (func var) (-> (== var 16))) (# (filter func [2 4 4 16]))', 1},
     {'(get "42" (map type (dict ["42" "Lusp"])))', 'string'},
+
     -- list&dict&string
     {'(get 2 "Lusp")', 'u', 'list&dict&string'},
     {'(get 2 ["42" "Lusp"])', 'Lusp'},
@@ -179,9 +197,7 @@ Tests.tests = {
     {'(def var (set "p" "42" "Lusp")) (get (# var) var)', '2'},
     {'(def lst ["42" "Lusp"]) (first (set 1 0 lst))', 0},
     {'(def tab (dict ["42" "Lusp"])) (has "0" (set "42" "0" tab))', true},
-    {'(get 2 (del 1 [2 4]))', nil},
     {'(get 1 (del 1 [2 4]))', 4},
-    {'(get "42" (del "42" (dict ["42" "Lusp"])))', nil},
     {'(get 1 (del "L" "Lusp"))', 'u'},
     {'(get "Lusp" (del "?" (dict ["?" 4] ["Lusp" 42])))', 42},
     {'(last (merge ["?" 42] ["Lusp" "32"]))', "32"},
@@ -190,6 +206,7 @@ Tests.tests = {
     {'(get 2 (insert 2 "8" ["42" "Lusp"]))', '8'},
     {'(get 1 (insert 1 "Lusp" (dict ["2" "42"])))', 'Lusp'},
     {'(insert 5 "42" "Lusp")', "Lusp42"},
+
     -- string
     {'(upper "lusp")', "LUSP"},
     {'(lower "LUSP")', "lusp"},
@@ -212,12 +229,14 @@ Tests.tests = {
     {'(first (char 65 66 67))', 'A'},
     {'(unpack (char 65 66 67) 1 1)', 'A'},
     {'(insert (unpack [5 "42" "Lusp"]))', "Lusp42"},
+
     -- input
-    {'(# (arg))', 2, 'input'},
+    {'(# ARGS)', 2, 'input'},
     {'(def f "'.. Tests.tmpfile.. '") (writefile "Lusp" f) (readfile f)', 'Lusp'},
     {'(first (readlines "tests.lua"))', '-- LUSP'},
     {'(def f "'.. Tests.tmpbin.. '") (writebin "Lusp" f) (readbin f)', 'Lusp'},
     -- {'(def var (input )) (show var)', 'Lusp'},
+
     -- os
     {'(> 1 (clock))', true, 'os'},
     {'(date "%d.%m.%Y")', os.date("%d.%m.%Y")},
@@ -234,21 +253,73 @@ Tests.tests = {
     {'(getenv "USER")', os.getenv('USER')},
     {'(getenv "HOME")', os.getenv('HOME')},
     {'(setlocale)', os.setlocale()},
+    {'(setlocale "fr_FR") (num 3.14)',
+        os.setlocale('fr_FR'); tonumber(3.14); os.setlocale('C')
+    },
     -- {'(exit #t) (exit 0)', true},
+
+    --definition
+    {'(def var42 "2") (# var42)', 1, 'definition'},
+    {'(def (func x) (-> (- 2 x))) (func 2)', 0},
+    {'(def lst [2 4 8 16 #t]) (type lst)', 'table'},
+    {'(def (func) (== 2 2)) (def Func (if (-> func) (-> #t) (-> #f))) (-> Func)', true},
+    {'(def (func x) (-> (+ 1 x))) (def (same) (mut (func y) (-> (+ 2 y))) (func 1)) (-> (same))', 3},
+    {'(def (func x) (-> (+ 1 x))) (def (same) (def (func y) (-> (+ 2 y))) (func 1)) (-> (same))', 3},
+    {'(def (func x) (-> (+ 1 x))) (def (diff) (def (func y) (-> (+ 2 y))) (func 1)) (-> (func 1))', 2},
+    {'(def var "lusp") (-> var)', 'lusp'},
+    {'(def x 8) (def y 8) (-> (+ x y))', 16},
+    {'(def x (+ 8 8)) (def y 8) (-> (+ x y))', 24},
+    {'(def (func x y) (-> x y)) (def v1 v2 (func 1 2)) (-> v2)', 2},
+    {'(def func (+ 8 8)) (-> (? func))', 'number'},
+    {'(def (func v1 v2) (-> (add v1 v2))) (func 2 2)', 4},
+    {'(def (func var) (-> var)) (+ (func 2) (func 4))', 6},
+    {'(def (func x y) ((-> x) (-> y))) (func 1 2)', 1},
+    {'(def (func v1 v2) ((def v1 (+ v1 1)) (-> #t) (add v1 v2))) (func 2 2)', true},
+    {'(def (func v1 v2) ((def v1 (+ v1 1)) (add v1 v2))) (func 2 2)', 5},
     -- integration
     {'(def (func v1) ((def v2 1) (-> (+ v1 v2)))) (-> (func 1))', 2, 'integration'},
+    {'(def same 1) (for (var [1]) (mut same (+ same var))) (def (func same) (show same) (-> same)) (-> (func "lusp"))', 'lusp'},
     {'(def (func var) (-> (round var 1))) (def y (func 3.14)) (-> y)', 3.1},
     {'(def (func x y) ((def x (+ 1 x)) (def y (+ 2 y)) (-> [x y]))) (last (func 2 2))', 4},
     {'(def (fact var) (if (== var 1) (-> var) (-> (* var (fact (- var 1)))))) (-> (fact 6))', 720},
+
+    -- error
+    {'(# [undef merge])', 'error', 'error'},
+    {'(# #)', 'error'},
+    {'(def 42var 42)', 'error'},
+    {'(def (func) ((def x 2))) (func) (-> x)', 'error'},
+    {'(def (fake) (def x 2)) (func)', 'error'},
+    {'(-> var)', 'error'},
+    {'(if (== 4 4) (def x 1) (def y 0)) (->  y)', 'error'},
+    {'(def (~func) (-> #t))', 'error'},
+    {'(if (== 4 4) (def ~x 1)) (-> ~x)','error'},
+    {'(for (~var [2 4]) (-> ~var))', 'error'},
+    {'(eval "(def ~var (-> "Lusp"))") (-> ~var)', 'error'},
+    {'(def var #n) (if (-> var) (-> #t) (-> #f))', 'error'},
+    {'(get "42" (del "42" (dict ["42" "lusp"])))', 'error'},
+    {'(get 2 (del 1 [2 4]))', 'error'},
+    {'(readfile "nofile")', 'error'},
+    {'(setlocale "all")', 'error'},
 }
 
 function Tests.execute(Lusp, Def, tests)
-    local exe = Lusp.eval(tests[1], Def, {})
-    local res = assert(exe == tests[2], 'Fail')
-    return res and 'Pass'
+    local result = Lusp.eval(tests[1], Def, {})
+
+    local test = (
+        (
+            Tests.savederror and tostring(Tests.savederror):find('Error:')
+            and assert('error' == tests[2], 'Fail')
+        )
+        or assert(result == tests[2], 'Fail')
+        )
+        and 'Pass'
+    Tests.savederror = nil
+    return test
 end
 
 function Tests.run(Lusp, Def)
+    Tests.isdebug = true
+
     io.write('--Lusp Tests--\n')
     for id, tests in pairs(Tests.tests) do
         if #tests==3 then
