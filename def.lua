@@ -1,42 +1,49 @@
 -- LUSP
 -- def.lua
 
+local unpack = table.unpack or unpack
+
 local settings = require('settings')
 
-local unpack = table.unpack or unpack
-local utf8 = require('utf8')
-
-
 local Lusp = require('lusp')
+local Error = require('error')
 local RE = require('re')
 
 local Def = {}
-local Local = {}
 
 -- definition
 
-function Local._lusp(_, predef, _)
+function Def._lusp_(_, predef, _)
     local res = {}
     for k,v in pairs(predef) do
-        res[k:gsub('^'..RE.token, '', 1)] = v
+        res[k:gsub(RE.token, '')] = v
     end
     return res
 end
 
-
-function Local._scope(_, _, scope)
+function Def._scope_(_, _, scope)
     local res = {}
     for k,v in pairs(scope) do
-        if k == 'scope' then
-            res[k] = Local._scope(_,_, v)
+        if k == '_scope_' then
+            res[k] = Def._scope_(_,_, v)
         else
-            res[k:gsub('^'..RE.token, '', 1)] = v
+            res[k:gsub(RE.token, '')] = v
         end
     end
     return res
 end
 
-function Local._def(t, predef, scope, mutate)
+
+local function define(scope, tokenize, result, mutate)
+    scope[tokenize] = result
+    if mutate then
+        if scope['_scope_'] and scope['_scope_'][tokenize] then
+            scope['_scope_'][tokenize] = result
+        end
+    end
+end
+
+function Def._def_(t, predef, scope, mutate)
     local fdef, fbody = t[1]:match(RE.deffunc)
     local edef, ebody = t[1]:match(RE.defexpr)
     local vdef, vbody = t[1]:match(RE.defvar)
@@ -47,9 +54,9 @@ function Local._def(t, predef, scope, mutate)
 
     if fdef then
         local name, args = fdef:match(RE.defvar)
-        if string.find(name, RE.token) then
-            error('wrong literal '.. RE.token)
-        end
+        Error.checkVariable(name)
+        Error.checkDefinition(name, t[1], mutate and 'mut' or 'def')
+
         local param = Lusp.splitArgs(args)
 
         local function func(...)
@@ -62,63 +69,47 @@ function Local._def(t, predef, scope, mutate)
             for i=1, #param do
                 upvalue[param[i]] = argf[i]
             end
-            upvalue['scope'] = scope
-            upvalue['name'] = name
+            upvalue['_scope_'] = scope
+            upvalue['_name_'] = name
             return Lusp.eval(fbody, predef, upvalue)
         end
-        scope[RE.token..name] = func
-        if mutate then
-            if scope['scope'] and scope['scope'][RE.token..name] then
-                scope['scope'][RE.token..name] = func
-            end
-        end
+
+        define(scope, RE.tokenize(name), func, mutate)
 
     elseif edef then
-        -- if string.find(edef, RE.token) then
-        --     error('wrong literal '.. RE.token)
-        -- end
+        for var in edef:gmatch(RE.splitspace) do
+            Error.checkVariable(var)
+            Error.checkDefinition(var, t[1], mutate and 'mut' or 'def')
+        end
         local vars = Lusp.splitArgs(edef)
         local res = {Lusp.eval(ebody, predef, scope)}
         for i=1, #vars do
-            local name = vars[i]:match(RE.defvar)
-            scope[name] = res[i]
-            if mutate then
-                if scope['scope'] and scope['scope'][name] then
-                    scope['scope'][name] = res[i]
-                end
-            end
+            define(scope, vars[i], res[i], mutate)
         end
 
     elseif vdef then
-        if string.find(vdef, RE.token) then
-            error('wrong literal '.. RE.token)
-        end
+        Error.checkVariable(vdef)
+        Error.checkDefinition(vdef, t[1], mutate and 'mut' or 'def')
 
         local res = (
-            scope[RE.token..vbody]
+            scope[RE.tokenize(vbody)]
             or Lusp.eval('(-> '..vbody..')', predef, scope)
         )
-        scope[RE.token..vdef] = res
-        if mutate then
-            if scope['scope'] and scope['scope'][RE.token..vdef] then
-                scope['scope'][RE.token..vdef] = res
-            end
-        end
+
+        define(scope, RE.tokenize(vdef), res, mutate)
+
     else
-        if mutate then
-            error('unable to define (mut '.. t[1]..')')
-        end
-        error('unable to define (def '.. t[1]..')')
+        Error.unableDefine(t[1], mutate and 'mut' or 'def')
     end
 end
 
-function Local._mut(t, predef, scope)
-    Local._def(t, predef, scope, true)
+function Def._mut_(t, predef, scope)
+    Def._def_(t, predef, scope, true)
 end
 
 -- basic
 
-function Local._len(t)
+function Def._len_(t)
     if type(t[1]) == 'string' then
         return #t[1]
     elseif type(t[1]) == 'table' then
@@ -132,11 +123,11 @@ function Local._len(t)
     end
 end
 
-function Local._type(t)
+function Def._type_(t)
     return type(t[1])
 end
 
-function Local._assert(t)
+function Def._assert_(t)
     if t[2] then
         assert(t[1], t[2])
     else
@@ -145,215 +136,215 @@ function Local._assert(t)
     return true
 end
 
-function Local._error(t)
+function Def._error_(t)
     error(t[1])
 end
 
-function Local._num(t)
+function Def._num_(t)
     return tonumber(t[1])
 end
 
-function Local._str(t)
+function Def._str_(t)
     return tostring(t[1])
 end
 
-function Local._return(t)
+function Def._return_(t)
     return unpack(t)
 end
 
-function Local._eval(t, predef, scope)
+function Def._eval_(t, predef, scope)
     local expr = t[1]:gsub(RE.string, '%1')
     return Lusp.eval(expr, predef, scope)
 end
 
-function Local._do(t, predef, scope)
+function Def._do_(t, predef, scope)
     local file = io.open(t[1], 'r')
     local expr = file:read('*a')
     file:close()
     return Lusp.eval(expr, predef, scope)
 end
 
-function Local._call(t, predef, scope)
+function Def._call_(t, predef, scope)
     return Lusp.eval('('..t[1]..')', predef, scope, true)
 end
 
 
 -- math
 
-function Local._add(t)
+function Def._add_(t)
     local res = t[1]
     for i=2, #t do res = res + t[i] end
     return res
 end
 
-function Local._sub(t)
+function Def._sub_(t)
     local res = t[1]
     for i=2, #t do res = res - t[i] end
     return res
 end
 
-function Local._mul(t)
+function Def._mul_(t)
     local res = t[1]
     for i=2, #t do res = res * t[i] end
     return res
 end
 
-function Local._div(t)
+function Def._div_(t)
     local res = t[1]
     for i=2, #t do res = res / t[i] end
     return res
 end
 
-function Local._fdiv(t)
+function Def._fdiv_(t)
     local res = t[1]
     for i=2, #t do res = res // t[i] end
     return res
 end
 
-function Local._modulo(t)
+function Def._modulo_(t)
     local res = t[1]
     for i=2, #t do res = res % t[i] end
     return res
 end
 
-function Local._pow(t)
+function Def._pow_(t)
     local res = t[1]
     for i=2, #t do res = res ^ (t[i]) end
     return res
 end
 
-function Local._abs(t)
+function Def._abs_(t)
     return math.abs(t[1])
 end
 
-function Local._acos(t)
+function Def._acos_(t)
     return math.acos(t[1])
 end
 
-function Local._asin(t)
+function Def._asin_(t)
     return math.asin(t[1])
 end
 
-function Local._atan(t)
+function Def._atan_(t)
     return math.atan(t[1])
 end
 
-function Local._ceil(t)
+function Def._ceil_(t)
     return math.ceil(t[1])
 end
 
-function Local._cos(t)
+function Def._cos_(t)
     return math.cos(t[1])
 end
 
-function Local._deg(t)
+function Def._deg_(t)
     return math.deg(t[1])
 end
 
-function Local._exp(t)
+function Def._exp_(t)
     return math.exp(t[1])
 end
 
-function Local._floor(t)
+function Def._floor_(t)
     return math.floor(t[1])
 end
 
-function Local._fmod(t)
-    return {math.fmod(t[1], t[2])}
+function Def._fmod_(t)
+    return math.fmod(t[1], t[2])
 end
 
-function Local._log(t)
+function Def._log_(t)
     return math.log(unpack(t))
 end
 
-function Local._max(t)
+function Def._max_(t)
     return math.max(unpack(t))
 end
 
-function Local._min(t)
+function Def._min_(t)
     return math.min(unpack(t))
 end
 
-function Local._modf(t)
-    return {math.modf(t[1])}
+function Def._modf_(t)
+    return math.modf(t[1])
 end
 
-function Local._rad(t)
+function Def._rad_(t)
     return math.rad(t[1])
 end
 
-function Local._round(t)
+function Def._round_(t)
     local after = t[2] or 2
     return t[1]-t[1]%(1/10^after)
 end
 
-function Local._randomseed(t)
+function Def._randomseed_(t)
     math.randomseed(t[1] or os.time())
 end
 
-function Local._random(t)
+function Def._random_(t)
     return math.random(unpack(t))
 end
 
-function Local._sin(t)
+function Def._sin_(t)
     return math.sin(t[1])
 end
 
-function Local._sqrt(t)
+function Def._sqrt_(t)
     return math.sqrt(t[1])
 end
 
-function Local._tan(t)
+function Def._tan_(t)
     return math.tan(t[1])
 end
 
-function Local._ult(t)
+function Def._ult_(t)
     return math.ult(t[1], t[2])
 end
 
 -- condition
 
-function Local._eq(t)
+function Def._eq_(t)
     if t[1] == t[2] then return true else return false end
 end
 
-function Local._neq(t)
+function Def._neq_(t)
     if t[1] ~= t[2] then return true else return false end
 end
 
-function Local._ge(t)
+function Def._ge_(t)
     if t[1] > t[2] then return true else return false end
 end
 
-function Local._gte(t)
+function Def._gte_(t)
     if t[1] >= t[2] then return true else return false end
 end
 
-function Local._le(t)
+function Def._le_(t)
     if t[1] < t[2] then return true else return false end
 end
 
-function Local._lte(t)
+function Def._lte_(t)
     if t[1] <= t[2] then return true else return false end
 end
 
-function Local._and(t)
+function Def._and_(t)
     local res = t[1]
     for i=2, #t do res = res and t[i] end
     return res
 end
 
-function Local._or(t)
+function Def._or_(t)
     local res = t[1]
     for i=2, #t do res = res or t[i] end
     return res
 end
 
-function Local._not(t)
+function Def._not_(t)
     return not t[1]
 end
 
-function Local._if(t, predef, scope)
+function Def._if_(t, predef, scope)
     local cond, expr = t[1]:match(RE.defif)
 
     if Lusp.eval(cond, predef, scope) then
@@ -368,49 +359,50 @@ end
 
 -- for
 
-function Local._for(t, predef, scope)
+function Def._for_(t, predef, scope)
     local cond, expr = t[1]:match(RE.deffunc)
 
-    local var, iter = cond:match(RE.defvar)
-    if string.find(var, RE.token) then
-        error('wrong literal '.. RE.token)
-    end
-    local callfunc = Lusp.checkScope(expr, predef, scope)
+    local name, iter = cond:match(RE.defvar)
 
-    local funcname = RE.token..'function'
+    Error.checkVariable(name)
+    Error.checkDefinition(name, t[1], 'for')
+
+    local callfunc = Lusp.getDefinition(expr, predef, scope)
+
+    local funcname = RE.tokenize('function')
     if not callfunc then
-        local deffunc = '(def (function '..var..') '.. expr .. ')'
+        local deffunc = '(def (function '..name..') '.. expr .. ')'
         Lusp.eval(deffunc, predef, scope)
         callfunc = scope[funcname]
     end
 
-    local itername = RE.token..'iterable'
+    local itername = RE.tokenize('iterable')
     Lusp.eval('(def iterable '..iter..')', predef, scope)
 
     for k,v in pairs(scope[itername]) do
         local _, result
-        if scope[itername].dict then
+        if scope[itername].isdict then
             _, result = pcall(callfunc, {k})
         else
             _, result = pcall(callfunc, {v})
         end
-        if result and result == 'break' then break end
+        if result and result == '_break_' then break end
     end
     scope[itername] = nil
     scope[funcname] = nil
 end
 
-function Local._break()
-    error('break')
+function Def._break_()
+    error('_break_')
 end
 
-function Local._continue()
-    error('continue')
+function Def._continue_()
+    error('_continue_')
 end
 
 -- list
 
-function Local._range(t)
+function Def._range_(t)
     local res = {}
     local last = t[2] or t[1]
     local first = t[2] and t[1] or 1
@@ -422,7 +414,7 @@ function Local._range(t)
     return res
 end
 
-function Local._list(t)
+function Def._list_(t)
     local res = {}
     local sep = t[2] or ''
     if #sep>0 then
@@ -437,25 +429,25 @@ function Local._list(t)
     return res
 end
 
-function Local._first(t)
+function Def._first_(t)
     return t[1][1]
 end
 
-function Local._last(t)
+function Def._last_(t)
     return t[1][#t[1]]
 end
 
-function Local._push(t)
+function Def._push_(t)
     t[2][#t[2]+1] = t[1]
     return t[2]
 end
 
-function Local._pop(t)
+function Def._pop_(t)
     t[1][#t[1]] = nil
     return t[1]
 end
 
-function Local._sort(t)
+function Def._sort_(t)
     if t[2] then
         table.sort(t[1], function(a,b) return a>b end)
     else
@@ -464,7 +456,7 @@ function Local._sort(t)
     return t[1]
 end
 
-function Local._flip(t)
+function Def._flip_(t)
     local res = {}
     for i=#t[1], 1, -1 do
         res[#res+1] = t[1][i]
@@ -472,7 +464,7 @@ function Local._flip(t)
     return res
 end
 
-function Local._concat(t)
+function Def._concat_(t)
     local res = ''
     for i=1, #t[1] do
         res = res .. t[1][i] .. (t[2] and t[2] or '')
@@ -482,16 +474,16 @@ end
 
 -- dict&list
 
-function Local._dict(t)
+function Def._dict_(t)
     local res = {}
     for i=1, #t do
         res[t[i][1]] = t[i][2]
     end
-    setmetatable(res, {__index={dict=true}})
+    setmetatable(res, {__index={isdict=true}})
     return res
 end
 
-function Local._keys(t)
+function Def._keys_(t)
     local res = {}
     for k,_ in pairs(t[1]) do
         res[#res+1] = k
@@ -499,7 +491,7 @@ function Local._keys(t)
     return res
 end
 
-function Local._values(t)
+function Def._values_(t)
     local res = {}
     for _,v in pairs(t[1]) do
         res[#res+1] = v
@@ -507,7 +499,7 @@ function Local._values(t)
     return res
 end
 
-function Local._map(t)
+function Def._map_(t)
     local res = {}
     for k,v in pairs(t[2]) do
         res[k]=t[1]({v})
@@ -515,7 +507,7 @@ function Local._map(t)
     return res
 end
 
-function Local._filter(t, _, scope)
+function Def._filter_(t)
     local res = {}
     for k,v in pairs(t[2]) do
         if t[1]({v}) then
@@ -525,29 +517,29 @@ function Local._filter(t, _, scope)
     return res
 end
 
-function Local._unpack(t)
+function Def._unpack_(t)
     return unpack(t[1], t[2] or 1, t[3] or #t[1])
 end
 
-function Local._pack(t)
+function Def._pack_(t)
     return table.pack(unpack(t))
 end
 
 -- dict&list&string
 
-function Local._get(t)
+function Def._get_(t)
     if type(t[2]) == 'string' then
         return t[2]:sub(t[1],t[1])
     elseif type(t[2]) == 'table' then
         local res = t[2][t[1]]
         if res == nil then
-            error('key undefined')
+            Error.undefined('key', t[1])
         end
         return res
     end
 end
 
-function Local._has(t)
+function Def._has_(t)
     if type(t[2]) == 'string' then
         return t[2]:find(t[1]) and true or false
     elseif type(t[2]) == 'table' then
@@ -559,7 +551,7 @@ function Local._has(t)
     end
 end
 
-function Local._set(t)
+function Def._set_(t)
     if type(t[3]) == 'string' then
         return t[3]:gsub(t[1],t[2])
     elseif type(t[3]) == 'table' then
@@ -568,10 +560,10 @@ function Local._set(t)
     end
 end
 
-function Local._del(t)
+function Def._del_(t)
     if type(t[2]) == 'string' then
         return t[2]:gsub(t[1],'')
-    elseif type(t[2]) == 'table' and t[2].dict then
+    elseif type(t[2]) == 'table' and t[2].isdict then
         t[2][t[1]] = nil
         return t[2]
     elseif type(t[2]) == 'table' then
@@ -580,7 +572,7 @@ function Local._del(t)
     end
 end
 
-function Local._merge(t)
+function Def._merge_(t)
     if type(t[1]) == 'string' then
         local res = ''
         for i=1, #t do
@@ -599,10 +591,10 @@ function Local._merge(t)
     end
 end
 
-function Local._insert(t)
+function Def._insert_(t)
     if type(t[3]) == 'string' then
         return t[3]:sub(1, t[1]-1)..t[2]..t[3]:sub(t[1])
-    elseif type(t[3]) == 'table' and t[3].dict then
+    elseif type(t[3]) == 'table' and t[3].isdict then
         t[3][t[1]] = t[2]
         return t[3]
     elseif type(t[3]) == 'table' then
@@ -614,19 +606,19 @@ end
 
 -- string
 
-function Local._upper(t)
+function Def._upper_(t)
     return string.upper(t[1])
 end
 
-function Local._lower(t)
+function Def._lower_(t)
     return string.lower(t[1])
 end
 
-function Local._capitalize(t)
+function Def._capitalize_(t)
     return string.gsub(t[1], '^.', string.upper)
 end
 
-function Local._title(t)
+function Def._title_(t)
     local res = ''
     for word in t[1]:gmatch('%g+') do
         res = res .. string.gsub(word, '^.', string.upper) .. ' '
@@ -634,23 +626,23 @@ function Local._title(t)
     return res:sub(1, #res-1)
 end
 
-function Local._repeat(t)
+function Def._repeat_(t)
     return t[2]:rep(t[1])
 end
 
-function Local._replace(t)
+function Def._replace_(t)
     return string.gsub(t[3], t[1], t[2])
 end
 
-function Local._match(t)
+function Def._match_(t)
     return string.match(t[3], t[1], t[2])
 end
 
-function Local._reverse(t)
+function Def._reverse_(t)
     return t[1]:reverse()
 end
 
-function Local._trim(t)
+function Def._trim_(t)
     local trim = RE.trimspace
     if t[2] then
         trim = '^'..t[2]..'*(.-)'..t[2]..'*$'
@@ -658,116 +650,150 @@ function Local._trim(t)
     return t[1]:gsub(trim, '%1')
 end
 
-function Local._format(t)
+function Def._format_(t)
     return string.format(unpack(t))
 end
 
-function Local._byte(t)
+function Def._byte_(t)
     return {string.byte(unpack(t))}
 end
 
-function Local._char(t)
-    return Local._list({string.char(unpack(t))})
+function Def._char_(t)
+    return Def._list_({string.char(unpack(t))})
 end
 
 
 -- io
 
-function Local._readfile(t)
+function Def._readfile_(t)
     local file = io.open(t[1], 'r')
-    if not file then error('file undefined') end
+    if not file then Error.undefined('file', t[1]) end
     local res = file:read('*a')
     file:close()
     return res
 end
 
-function Local._readlines(t)
+function Def._readlines_(t)
     local file = io.open(t[1], 'r')
-    if not file then error('file undefined') end
+    if not file then Error.undefined('file', t[1]) end
     local res = {}
     for line in file:lines() do res[#res+1] = line end
     return res
 end
 
-function Local._writefile(t)
+function Def._writefile_(t)
     local file = io.open(t[2], 'w')
-    if not file then error('file undefined') end
+    if not file then Error.undefined('file', t[2]) end
     file:write(t[1])
     file:close()
 end
 
-function Local._readbin(t)
+function Def._readbin_(t)
     local file = io.open(t[1], 'rb')
-    if not file then error('file undefined') end
+    if not file then Error.undefined('file', t[1]) end
     local res = file:read('*a')
     file:close()
     return res
 end
 
-function Local._writebin(t)
+function Def._writebin_(t)
     local file = io.open(t[2], 'wb')
-    if not file then error('file undefined') end
+    if not file then Error.undefined('file', t[2]) end
     file:write(t[1])
     file:close()
 end
 
-function Local._input()
+function Def._input()
     return io.read()
 end
 
 
 -- os
 
-function Local._clock()
+function Def._clock_()
     return os.clock()
 end
 
-function Local._date(t)
+function Def._date_(t)
     return os.date(unpack(t))
 end
 
-function Local._time(t)
+function Def._time_(t)
     return os.time(t[1])
 end
 
-function Local._difftime(t)
+function Def._difftime_(t)
     return os.difftime(unpack(t))
 end
 
-function Local._execute(t)
+function Def._execute_(t)
     return os.execute(t[1])
 end
 
-function Local._remove(t)
+function Def._remove_(t)
     return os.remove(t[1])
 end
 
-function Local._rename(t)
+function Def._rename_(t)
     return os.rename(t[1], t[2])
 end
 
-function Local._tmpname()
+function Def._tmpname_()
     return os.tmpname()
 end
 
-function Local._getenv(t)
+function Def._getenv_(t)
     local res = os.getenv(t[1])
     if res == nil then
-        error('environment undefined')
+        Error.undefined('environment', t[1])
     end
     return res
 end
 
-function Local._setlocale(t)
+function Def._setlocale_(t)
     local res = os.setlocale(t[1])
     if res == nil then
-        error('locale undefined')
+        Error.undefined('locale', t[1])
     end
     return res
 end
 
-function Local._exit(t)
+function Def._exit_(t)
     return os.exit(t[1])
+end
+
+-- bits
+function Def._band_(t)
+    local res = t[1]
+    for i=2, #t do res = res & t[i] end
+    return res
+end
+
+function Def._bor_(t)
+    local res = t[1]
+    for i=2, #t do res = res | t[i] end
+    return res
+end
+
+function Def._bxor_(t)
+    if #t==1 then
+        return ~t[1]
+    end
+    local res = t[1]
+    for i=2, #t do res = res ~ t[i] end
+    return res
+end
+
+function Def._lshift_(t)
+    local res = t[1]
+    for i=2, #t do res = res << t[i] end
+    return res
+end
+
+function Def._rshift_(t)
+    local res = t[1]
+    for i=2, #t do res = res >> t[i] end
+    return res
 end
 
 -- output
@@ -788,7 +814,7 @@ local function printer(value)
     end
 end
 
-function Local._show(t)
+function Def._show_(t)
     for i=1, #t do
         printer(t[i])
     end
@@ -796,43 +822,38 @@ function Local._show(t)
 end
 
 -- sugar
-Def[RE.token..'ARGS'] = arg
-Def[RE.token..'VERSION'] = settings.VERSION .. ' ('.. _VERSION .. ')'
-Def[RE.token..'#'] = Local._len
-Def[RE.token..'?'] = Local._type
-Def[RE.token..'+'] = Local._add
-Def[RE.token..'-'] = Local._sub
-Def[RE.token..'*'] = Local._mul
-Def[RE.token..'/'] = Local._div
-Def[RE.token..'//'] = Local._fdiv
-Def[RE.token..'PI'] = math.pi
-Def[RE.token..'HUGE'] = math.huge
-Def[RE.token..'MAXINT'] = math.maxinteger
-Def[RE.token..'MININT'] = math.mininteger
-Def[RE.token..'=='] = Local._eq
-Def[RE.token..'!='] = Local._neq
-Def[RE.token..'>'] = Local._ge
-Def[RE.token..'>='] = Local._gte
-Def[RE.token..'<'] = Local._le
-Def[RE.token..'<='] = Local._lte
-Def[RE.token..'&&'] = Local._and
-Def[RE.token..'||'] = Local._or
-Def[RE.token..'!'] = Local._not
-Def[RE.token..'#t'] = true
-Def[RE.token..'#f'] = false
+Def[RE.tokenize('ARGS')] = arg
+Def[RE.tokenize('VERSION')] = settings.VERSION .. ' ('.. _VERSION .. ')'
+Def[RE.tokenize('#')] = Def._len_
+Def[RE.tokenize('?')] = Def._type_
+Def[RE.tokenize('+')] = Def._add_
+Def[RE.tokenize('-')] = Def._sub_
+Def[RE.tokenize('*')] = Def._mul_
+Def[RE.tokenize('/')] = Def._div_
+Def[RE.tokenize('//')] = Def._fdiv_
+Def[RE.tokenize('PI')] = math.pi
+Def[RE.tokenize('HUGE')] = math.huge
+Def[RE.tokenize('MAXINT')] = math.maxinteger
+Def[RE.tokenize('MININT')] = math.mininteger
+Def[RE.tokenize('==')] = Def._eq_
+Def[RE.tokenize('!=')] = Def._neq_
+Def[RE.tokenize('>')] = Def._ge_
+Def[RE.tokenize('>=')] = Def._gte_
+Def[RE.tokenize('<')] = Def._le_
+Def[RE.tokenize('<=')] = Def._lte_
+Def[RE.tokenize('&&')] = Def._and_
+Def[RE.tokenize('||')] = Def._or_
+Def[RE.tokenize('!')] = Def._not_
+Def[RE.tokenize('true')] = true
+Def[RE.tokenize('false')] = false
+Def[RE.tokenize('->')] = Def._return_
+Def[RE.tokenize('..')] = Def._merge_
+-- bits
+Def[RE.tokenize('&')] = Def._band_
+Def[RE.tokenize('|')] = Def._bor_
+Def[RE.tokenize('~')] = Def._bxor_
+Def[RE.tokenize('<<')] = Def._lshift_
+Def[RE.tokenize('>>')] = Def._rshift_
 
-
-
-for k,v in pairs(Local) do
-    local name = RE.token..k:gsub('_','')
-    -- print(Def[name], name)
-    if not Def[name] then
-        -- print(name)
-        Def[name]=v
-    end
-end
-
-Def[RE.token..'->'] = Local._return
-Def[RE.token..'..'] = Local._merge
 
 return Def

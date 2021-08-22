@@ -2,93 +2,29 @@
 -- lusp.lua
 
 local unpack = table.unpack or unpack
-local utf8 = require('utf8')
 
-local Tests = require('tests')
+local Error = require('error')
 local RE = require('re')
-
 
 local Lusp = {}
 
-function Lusp.error(message, scope)
-    local err = Lusp.geterror(message, scope)
-
-    if Tests.isdebug then
-        Tests.savederror = err
-    else
-        io.write(err..'\n')
-        os.exit(0)
-    end
+function Lusp.cleanInput(args)
+    local nocomments = args:gsub(';%s*.-%f[\n]','')
+    return nocomments:gsub('%s+',' '):gsub('%s+%)',')'):gsub('%(%s+','('):gsub('%(%s+%(','(('):gsub('%)%s+%)','))')
 end
-
-function Lusp.geterror(message, scope)
-    return ('Error: '..message:gsub('[%g]+: ','')..' | '.. (scope['name'] or 'root'))
-end
-
-function Lusp.checkBraces(args)
-    local _, lbr = args:gsub('%(', '')
-    local _, rbr = args:gsub('%)', '')
-
-    local _, lqbr = args:gsub('%[', '')
-    local _, rqbr = args:gsub('%]', '')
-
-
-    if lbr ~= rbr then
-        error('unpaired braces ()')
-    end
-
-    if lqbr ~= rqbr then
-        error('unpaired braces []')
-    end
-end
-
-function Lusp.checkQuotes(args)
-    local _, dquotes = args:gsub('"', '')
-    local _, squotes = args:gsub("'", '')
-
-    if dquotes > 0 and dquotes % 2 ~= 0 then
-        error('unpaired quotes "')
-    end
-    if squotes > 0 and squotes % 2 ~= 0 then
-        error("unpaired quotes '")
-    end
-end
-
-function Lusp.splitArgs(args)
+function Lusp.splitArgs(args, islusp)
     local arr = {}
     if args then
-        Lusp.checkBraces(args)
-        Lusp.checkQuotes(args)
+        Error.checkBraces(args)
+        Error.checkQuotes(args)
 
-        args = args:gsub('%(%s+','('):gsub('%(%s+%(','(('):gsub('%)%s+%)','))')
+        args = Lusp.cleanInput(args)
 
         local match = string.match(args, RE.splitspace)
 
         while match do
-
             if string.find(match, '%(%(', 1) then
                 args = args:gsub(RE.trimbracket, '%1')
-
-            elseif string.find(match, '^[\"]') then
-                args = args:gsub(RE.dquote,
-                    function(s)
-                        arr[#arr+1] = s
-                        return ''
-                    end,
-                    1
-                )
-            elseif string.find(match, '^[\']') then
-                args = args:gsub(RE.squote,
-                    function(s)
-                        arr[#arr+1] = s
-                        return ''
-                    end,
-                    1
-                )
-            elseif string.find(match, ';') then
-                args = args:gsub(RE.comment, '')
-            elseif string.find(match, RE.token) then
-                error('wrong literal '.. RE.token)
             elseif string.find(match, '%(+%s*def$')
                 or string.find(match, '%(+%s*mut$')
                 or string.find(match, '%(+%s*if$')
@@ -101,19 +37,44 @@ function Lusp.splitArgs(args)
                     function(s)
                         local def, body = s:match(RE.defall)
 
-                        arr[#arr+1] = {RE.token..def, body}
+                        arr[#arr+1] = {RE.tokenize(def), body}
                         return ''
                     end,
                     1
                 )
+            elseif string.find(match, '^[\"]') then
+                if #arr == 0 and islusp then
+                    Error.wrongCharAction('"', match)
+                end
+                args = args:gsub(RE.dquote,
+                    function(s)
+                        arr[#arr+1] = s
+                        return ''
+                    end,
+                    1
+                )
+            elseif string.find(match, '^[\']') then
+                if #arr == 0 and islusp then
+                    Error.wrongCharAction("'", match)
+                end
+                args = args:gsub(RE.squote,
+                    function(s)
+                        arr[#arr+1] = s
+                        return ''
+                    end,
+                    1
+                )
+            elseif string.find(match, ';') then
+                args = args:gsub(RE.comment, '')
             elseif string.find(match, '%[') then
                 args = args:gsub(RE.islist,
                     function(s)
                         for tab in string.gmatch(s, RE.islist) do
                             arr[#arr+1] = Lusp.splitArgs(
-                                tab:gsub(RE.trimlist, '%1')
+                                tab:gsub(RE.trimlist, '%1'),
+                                false
                             )
-                            setmetatable(arr[#arr], {__index={list=true}})
+                            setmetatable(arr[#arr], {__index={islist=true}})
                         end
                         return ''
                     end,
@@ -124,8 +85,10 @@ function Lusp.splitArgs(args)
                     function(s)
                         for tab in string.gmatch(s, RE.islusp) do
                             arr[#arr+1] = Lusp.splitArgs(
-                                tab:gsub(RE.trimlusp, '%1')
+                                tab:gsub(RE.trimlusp, '%1'),
+                                true
                             )
+                            setmetatable(arr[#arr], {__index={islusp=true}})
                         end
                         return ''
                     end,
@@ -137,10 +100,14 @@ function Lusp.splitArgs(args)
                 arr[#arr+1] = tonumber(match)
             else
 
+                local old = args
                 args = args:gsub(match, '', 1)
+                if old==args then
+                    Error.wrongCharInput(match)
+                end
 
-                arr[#arr+1] = RE.token..match
-                -- print('m',match)
+                arr[#arr+1] = RE.tokenize(match)
+
             end
             match = string.match(args, RE.splitspace)
         end
@@ -153,7 +120,7 @@ function Lusp.walkTree(tree, predef, scope)
     local action = tree[1]
 
     for i=2, #tree do
-        if type(tree[i]) == 'table' and not tree[i].list then
+        if type(tree[i]) == 'table' and not tree[i].islist then
             local results = {Lusp.walkTree(tree[i], predef, scope)}
             for j=1, #results do
                 args[#args+1] = results[j]
@@ -166,36 +133,39 @@ function Lusp.walkTree(tree, predef, scope)
     return Lusp.execute(action, args, predef, scope)
 end
 
-function Lusp.checkScope(value, predef, scope)
+function Lusp.isBool(value)
+    if value == RE.tokentrue or value == RE.tokenfalse then
+        return true
+    end
+    return false
+end
+
+function Lusp.getDefinition(value, predef, scope)
     return (
         scope[value]
+        or (scope['_scope_'] and scope['_scope_'][value])
         or predef[value]
-        or (scope['scope'] and scope['scope'][value])
     )
 end
 
 function Lusp.replaceVars(value, predef, scope)
-    if value == RE.token..'#t' or value == RE.token..'#f' then
-        return predef[value]
-    end
+    if Lusp.isBool(value) then return predef[value] end
 
     if type(value) == 'string' then
         if (scope[value] == false
-            or (scope['scope'] and scope['scope'][value] == false)) then
+            or (scope['_scope_'] and scope['_scope_'][value] == false)) then
             return false
         end
 
-        local res = Lusp.checkScope(value, predef, scope)
+        local result = Lusp.getDefinition(value, predef, scope)
 
-        if res == RE.token..'#t' or res == RE.token..'#f' then
-            return predef[res]
+        if Lusp.isBool(result) then return predef[result] end
+
+        if result == nil and value:match(RE.tokenvar) then
+            Error.undefined('variable', value:gsub(RE.token, ''))
         end
 
-        if res == nil and value:match(RE.var) then
-            error('variable undefined')
-        end
-
-        return res or value
+        return result or value
     end
 
     return value
@@ -212,24 +182,16 @@ function Lusp.convertArgs(values, predef, scope)
 end
 
 function Lusp.execute(action, values, predef, scope)
-    local act = Lusp.checkScope(action, predef, scope)
+    local act = Lusp.getDefinition(action, predef, scope)
 
-    if (
-        action~=RE.token..'def'
-        and action~=RE.token..'mut'
-        and action~=RE.token..'if'
-        and action~=RE.token..'for'
-        and action~=RE.token..'eval'
-        and action~=RE.token..'call'
-        ) then
-
+    if not RE.specials[action] then
         Lusp.convertArgs(values, predef, scope)
     end
 
     if act then
         return act(values, predef, scope)
     else
-        error('action undefined')
+        Error.undefined('action', action:gsub(RE.token, ''))
     end
 end
 
@@ -247,7 +209,7 @@ function Lusp.run(inp, predef, scope)
     return unpack(output)
 end
 
-function Lusp.eval(inp, predef, scope, noerror)
+function Lusp.eval(inp, predef, scope, nocrash)
     local exe, result = pcall(Lusp.run, inp, predef, scope)
 
     if exe then
@@ -255,13 +217,13 @@ function Lusp.eval(inp, predef, scope, noerror)
             return unpack(result)
         end
         return result
-    elseif result:find('break') or result:find('continue') then
-        return 'break'
+    elseif result:find('_break_') or result:find('_continue_') then
+        return '_break_'
     else
-        if noerror then
-            return exe, Lusp.geterror(result, scope)
+        if nocrash then
+            return exe, Error.getError(result, scope)
         end
-        Lusp.error(result, scope)
+        Error.error(result, scope)
     end
 end
 

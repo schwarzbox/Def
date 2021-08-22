@@ -1,4 +1,0 @@
-; comment
-(def (fact var) (if (== var 1) (-> var) (-> (* var (fact (- var 1))))))
-(def (cool name color) (-> (.. name color)))
-; (def (commented) (-> "; comment"))

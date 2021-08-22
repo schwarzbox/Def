@@ -4,38 +4,67 @@
 -- REPL (lua)
 -- main.lua
 
+-- luastatic main.lua settings.lua lusp.lua re.lua def.lua tests.lua error.lua /Library/Frameworks/Lua-5.3/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.3/bin/../include
+
 local settings = require('settings')
 
-if arg[0] then io.write(settings.VERSION, ' LUSP REPL (lua)', arg[0],'\n') end
-
--- lua<5.3
-local unpack = table.unpack or unpack
-local utf8 = require('utf8')
-
-
 local Lusp = require('Lusp')
-local Tests = require('tests')
 local Def = require('Def')
+local Tests = require('tests')
 
---
-local input ='(show (call add "Lusp" 42)) (show "alex")'
--- local input = '(def vvvv -2) (show (* vvvv vvvv))'
--- error
--- local input = '(show (call * 2 "2"))'
-
-local function main()
-    -- Tests.run(Lusp, Def)
-
-    io.write(settings.VERSION, '\n')
-    io.write(settings.HELP,'\n')
-
-    -- while true do
-        -- io.output():write(settings.PROMPT)
-        -- input = io.input():read()
-
-        Lusp.eval(input, Def, {})
-        -- io.write(walkTree(root), '\n')
-    -- end
+local function evaluate(expr, nocrash)
+    local scope = {}
+    local result, error = Lusp.eval(expr, Def, scope, nocrash)
+    if result then
+        if type(result) ~= 'table' then
+            io.write(result,'\n')
+        end
+    elseif error then
+        io.write(error,'\n')
+    else
+        -- io.write('Bug?Bug!', '\n')
+        -- io.write('FUBAR', '\n')
+        io.write('TDTTOE', '\n')
+    end
 end
 
-main()
+local function main()
+    -- Lusp.eval(input, Def, {})
+    if arg[1]:match('^%-[%w]+') then
+        io.write(settings.VERSION, ' REPL (lua) ', '\n')
+        if arg[1] == '-help' or arg[1] == '-h' then
+            io.write(settings.VERSION, ' REPL (lua) ', '\n')
+            io.write(settings.HELP,'\n')
+        elseif arg[1] == '-version' or arg[1] == '-v' then
+            io.write(settings.VERSION,'\n')
+        elseif arg[1] == '-test' or arg[1] == '-t' then
+            io.write(settings.VERSION, ' REPL (lua) ', '\n')
+            Tests.run(Lusp, Def)
+        else
+            io.write(settings.HELP, '\n')
+        end
+    elseif arg[1] then
+        local file = io.open(arg[1], 'r')
+        if not file then
+            evaluate(arg[1])
+        else
+            local expr = file:read('*a')
+            file:close()
+            evaluate(expr)
+        end
+    else
+        io.write(settings.VERSION, ' REPL (lua) ', '\n')
+        io.write(settings.EXIT,'\n')
+        while true do
+            io.output():write(settings.PROMPT)
+            evaluate(io.input():read(), true)
+        end
+    end
+end
+
+if #arg == 0 then
+    io.write(settings.VERSION, ' REPL (lua) ', '\n')
+else
+    main()
+end
+
