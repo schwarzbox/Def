@@ -12,16 +12,10 @@ function Eval.splitArgs(args, isdef)
     local arr = {}
     if args then
         local match = string.match(args, RE.splitspace)
-        local cnt = 0
-
 
         while match do
-            print(match)
-            print(args)
             if string.find(match, '%(%(', 1) then
-                print('br', args:gsub(RE.trimbracket, '%1'))
                 args = args:gsub(RE.trimbracket, '%1')
-                print(args)
             elseif string.find(match, '%(+%s*def$')
                 or string.find(match, '%(+%s*mut$')
                 or string.find(match, '%(+%s*if$')
@@ -103,9 +97,7 @@ function Eval.splitArgs(args, isdef)
                 arr[#arr+1] = RE.tokenize(match)
 
             end
-            cnt = cnt +1
-            if cnt==13 then break end
-            print(cnt)
+
             match = string.match(args, RE.splitspace)
         end
     end

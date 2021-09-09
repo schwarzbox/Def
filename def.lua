@@ -65,10 +65,6 @@ function Def._def_(t, predef, scope, mutate)
     local defexpr, ebody = t[1]:match(RE.defexpr)
     local defvar, vbody = t[1]:match(RE.defvar)
 
-    -- print('f',deffunc, fbody)
-    -- print('e',edef, ebody)
-    -- print('d', defvar, vbody)
-
     if deffunc then
         local name, args = deffunc:match(RE.defvar)
         Error.checkVariable(name)
