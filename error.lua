@@ -1,4 +1,4 @@
--- LUSP
+-- DEF
 -- error.lua
 
 local RE = require('re')
@@ -19,8 +19,9 @@ function Error.error(message, scope)
 end
 
 function Error.getError(message, scope)
+    local space = (scope[RE.tokendefined] or 'root')
     return (
-    'Error: '..message:gsub('[%g]+: ','')..' | '.. (scope['_name_'] or 'root')
+    'Error: '..message:gsub('[%g%s]+: ','')..' | '.. space
     )
 end
 

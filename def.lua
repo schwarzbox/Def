@@ -1,11 +1,11 @@
--- LUSP
+-- DEF
 -- def.lua
 
 local unpack = table.unpack or unpack
 
 local settings = require('settings')
 
-local Lusp = require('lusp')
+local Eval = require('eval')
 local Error = require('error')
 local RE = require('re')
 
@@ -13,90 +13,108 @@ local Def = {}
 
 -- definition
 
-function Def._lusp_(_, predef, _)
+function Def._predef_(_, predef, _)
     local res = {}
     for k,v in pairs(predef) do
         res[k:gsub(RE.token, '')] = v
     end
+    setmetatable(res, {__index={islist=true, isdict=true}})
     return res
 end
 
-function Def._scope_(_, _, scope)
+function Def._selfdef_(_, _, scope)
     local res = {}
     for k,v in pairs(scope) do
-        if k == '_scope_' then
-            res[k] = Def._scope_(_,_, v)
+        if k == RE.tokenscope then
+            local result = Def._selfdef_(_,_, v)
+            if #result>0 then
+                res[k:gsub(RE.token, '')] = result
+            end
         else
-            res[k:gsub(RE.token, '')] = v
+            if k ~= RE.tokeniffunc
+                and k~= RE.tokenforfunc
+                and k~= RE.tokenforiter
+                and k~= RE.tokendefined
+                then
+                res[k:gsub(RE.token, '')] = v
+            end
         end
     end
+    setmetatable(res, {__index={islist=true, isdict=true}})
     return res
 end
 
 
 local function define(scope, tokenize, result, mutate)
-    scope[tokenize] = result
     if mutate then
-        if scope['_scope_'] and scope['_scope_'][tokenize] then
-            scope['_scope_'][tokenize] = result
+        if scope[tokenize] then
+            scope[tokenize] = result
+        end
+    else
+        scope[tokenize] = result
+    end
+    if mutate then
+        if scope[RE.tokenscope] then
+            define(scope[RE.tokenscope], tokenize, result, mutate)
         end
     end
 end
 
 function Def._def_(t, predef, scope, mutate)
-    local fdef, fbody = t[1]:match(RE.deffunc)
-    local edef, ebody = t[1]:match(RE.defexpr)
-    local vdef, vbody = t[1]:match(RE.defvar)
+    local deffunc, fbody = t[1]:match(RE.deffunc)
+    local defexpr, ebody = t[1]:match(RE.defexpr)
+    local defvar, vbody = t[1]:match(RE.defvar)
 
-    -- print('f',fdef, fbody)
+    -- print('f',deffunc, fbody)
     -- print('e',edef, ebody)
-    -- print('d', vdef, vbody)
+    -- print('d', defvar, vbody)
 
-    if fdef then
-        local name, args = fdef:match(RE.defvar)
+    if deffunc then
+        local name, args = deffunc:match(RE.defvar)
         Error.checkVariable(name)
         Error.checkDefinition(name, t[1], mutate and 'mut' or 'def')
 
-        local param = Lusp.splitArgs(args)
+        local param = Eval.splitArgs(args)
 
         local function func(...)
             local argf = ...
-            local upvalue = {}
+            local defscope = {}
 
             for k,v in pairs(scope) do
-                upvalue[k] = v
+                defscope[k] = v
             end
             for i=1, #param do
-                upvalue[param[i]] = argf[i]
+                defscope[param[i]] = argf[i]
             end
-            upvalue['_scope_'] = scope
-            upvalue['_name_'] = name
-            return Lusp.eval(fbody, predef, upvalue)
+            defscope[RE.tokenscope] = scope
+            defscope[RE.tokendefined] = name
+            return Eval.eval(fbody, predef, defscope)
         end
 
         define(scope, RE.tokenize(name), func, mutate)
 
-    elseif edef then
-        for var in edef:gmatch(RE.splitspace) do
-            Error.checkVariable(var)
-            Error.checkDefinition(var, t[1], mutate and 'mut' or 'def')
+    elseif defexpr then
+        for name in defexpr:gmatch(RE.splitspace) do
+            Error.checkVariable(name)
+            Error.checkDefinition(name, t[1], mutate and 'mut' or 'def')
         end
-        local vars = Lusp.splitArgs(edef)
-        local res = {Lusp.eval(ebody, predef, scope)}
+        local vars = Eval.splitArgs(defexpr)
+        local res = {Eval.eval(ebody, predef, scope)}
+
         for i=1, #vars do
             define(scope, vars[i], res[i], mutate)
         end
 
-    elseif vdef then
-        Error.checkVariable(vdef)
-        Error.checkDefinition(vdef, t[1], mutate and 'mut' or 'def')
+    elseif defvar then
+        Error.checkVariable(defvar)
+        Error.checkDefinition(defvar, t[1], mutate and 'mut' or 'def')
 
         local res = (
             scope[RE.tokenize(vbody)]
-            or Lusp.eval('(-> '..vbody..')', predef, scope)
+            or Eval.eval('(-> '..vbody..')', predef, scope)
         )
 
-        define(scope, RE.tokenize(vdef), res, mutate)
+        define(scope, RE.tokenize(defvar), res, mutate)
 
     else
         Error.unableDefine(t[1], mutate and 'mut' or 'def')
@@ -154,20 +172,19 @@ end
 
 function Def._eval_(t, predef, scope)
     local expr = t[1]:gsub(RE.string, '%1')
-    return Lusp.eval(expr, predef, scope)
+    return Eval.eval(expr, predef, scope)
 end
 
 function Def._do_(t, predef, scope)
     local file = io.open(t[1], 'r')
     local expr = file:read('*a')
     file:close()
-    return Lusp.eval(expr, predef, scope)
+    return Eval.eval(expr, predef, scope)
 end
 
 function Def._call_(t, predef, scope)
-    return Lusp.eval('('..t[1]..')', predef, scope, true)
+    return Eval.eval('('..t[1]..')', predef, scope, true)
 end
-
 
 -- math
 
@@ -280,6 +297,7 @@ end
 
 function Def._randomseed_(t)
     math.randomseed(t[1] or os.time())
+    return true
 end
 
 function Def._random_(t)
@@ -344,15 +362,44 @@ function Def._not_(t)
     return not t[1]
 end
 
+-- function Def._if_(t, predef, scope)
+--     local cond, expr = t[1]:match(RE.defif)
+
+
+--     if Eval.eval(cond, predef, scope) then
+--         return Eval.eval(
+--             expr:match(RE.isdef), predef, scope
+--         )
+--     else
+--         return Eval.eval(
+--             expr:gsub(RE.isdef, '', 1):match(RE.isdef), predef, scope
+--         )
+--     end
+-- end
+
 function Def._if_(t, predef, scope)
     local cond, expr = t[1]:match(RE.defif)
 
-    if Lusp.eval(cond, predef, scope) then
-        return Lusp.eval(expr:match(RE.islusp), predef, scope)
+    if Eval.eval(cond, predef, scope) then
+        local expr1 = expr:match(RE.isdef)
+        local deffunc = '(def (iffunc) '.. expr1 .. ')'
+
+        Eval.eval(deffunc, predef, scope)
+        local callfunc = scope[RE.tokeniffunc]
+        scope[RE.tokeniffunc] = nil
+
+        return callfunc()
     else
-        return Lusp.eval(
-            expr:gsub(RE.islusp, '', 1):match(RE.islusp), predef, scope
-        )
+        local expr2 = expr:gsub(RE.isdef, '', 1):match(RE.isdef)
+        if expr2 then
+            local deffunc = '(def (iffunc) '.. expr2 .. ')'
+
+            Eval.eval(deffunc, predef, scope)
+            local callfunc = scope[RE.tokeniffunc]
+            scope[RE.tokeniffunc] = nil
+
+            return callfunc()
+        end
     end
 end
 
@@ -367,37 +414,39 @@ function Def._for_(t, predef, scope)
     Error.checkVariable(name)
     Error.checkDefinition(name, t[1], 'for')
 
-    local callfunc = Lusp.getDefinition(expr, predef, scope)
+    local callfunc = Eval.getDef(expr, predef, scope)
 
-    local funcname = RE.tokenize('function')
     if not callfunc then
-        local deffunc = '(def (function '..name..') '.. expr .. ')'
-        Lusp.eval(deffunc, predef, scope)
-        callfunc = scope[funcname]
+        local deffunc = '(def (forfunc '..name..') '.. expr .. ')'
+
+        Eval.eval(deffunc, predef, scope)
+        callfunc = scope[RE.tokenforfunc]
     end
 
-    local itername = RE.tokenize('iterable')
-    Lusp.eval('(def iterable '..iter..')', predef, scope)
+    Eval.eval('(def foriter '..iter..')', predef, scope)
 
-    for k,v in pairs(scope[itername]) do
-        local _, result
-        if scope[itername].isdict then
+    local _, result, last
+    for k,v in pairs(scope[RE.tokenforiter]) do
+        if scope[RE.tokenforiter].isdict then
             _, result = pcall(callfunc, {k})
         else
             _, result = pcall(callfunc, {v})
         end
-        if result and result == '_break_' then break end
+
+        if result and result == RE.tokenbreak then break end
+        if result and result ~= RE.tokencontinue then last = result end
     end
-    scope[itername] = nil
-    scope[funcname] = nil
+    scope[RE.tokenforiter] = nil
+    scope[RE.tokenforfunc] = nil
+    return last
 end
 
 function Def._break_()
-    error('_break_')
+    error(RE.tokenbreak)
 end
 
 function Def._continue_()
-    error('_continue_')
+    error(RE.tokencontinue)
 end
 
 -- list
@@ -411,6 +460,7 @@ function Def._range_(t)
     for i=first, last, step do
         res[#res+1]=i
     end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -426,6 +476,7 @@ function Def._list_(t)
             res[i]=t[1]:sub(i,i)
         end
     end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -449,7 +500,7 @@ end
 
 function Def._sort_(t)
     if t[2] then
-        table.sort(t[1], function(a,b) return a>b end)
+        table.sort(t[1], function(a, b) return a>b end)
     else
         table.sort(t[1])
     end
@@ -461,6 +512,7 @@ function Def._flip_(t)
     for i=#t[1], 1, -1 do
         res[#res+1] = t[1][i]
     end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -479,7 +531,7 @@ function Def._dict_(t)
     for i=1, #t do
         res[t[i][1]] = t[i][2]
     end
-    setmetatable(res, {__index={isdict=true}})
+    setmetatable(res, {__index={islist=true, isdict=true}})
     return res
 end
 
@@ -488,6 +540,7 @@ function Def._keys_(t)
     for k,_ in pairs(t[1]) do
         res[#res+1] = k
     end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -496,6 +549,7 @@ function Def._values_(t)
     for _,v in pairs(t[1]) do
         res[#res+1] = v
     end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -504,6 +558,7 @@ function Def._map_(t)
     for k,v in pairs(t[2]) do
         res[k]=t[1]({v})
     end
+    setmetatable(res, {__index={islist=true, isdict=true}})
     return res
 end
 
@@ -514,6 +569,7 @@ function Def._filter_(t)
             res[k]=v
         end
     end
+    setmetatable(res, {__index={islist=true, isdict=true}})
     return res
 end
 
@@ -587,6 +643,7 @@ function Def._merge_(t)
                 res[k] = v
             end
         end
+        setmetatable(res, {__index={islist=true, isdict=true}})
         return res
     end
 end
@@ -627,15 +684,15 @@ function Def._title_(t)
 end
 
 function Def._repeat_(t)
-    return t[2]:rep(t[1])
+    return t[1]:rep(t[2])
 end
 
 function Def._replace_(t)
-    return string.gsub(t[3], t[1], t[2])
+    return string.gsub(t[1], t[2], t[3])
 end
 
 function Def._match_(t)
-    return string.match(t[3], t[1], t[2])
+    return string.match(t[1], t[2], t[3])
 end
 
 function Def._reverse_(t)
@@ -645,7 +702,7 @@ end
 function Def._trim_(t)
     local trim = RE.trimspace
     if t[2] then
-        trim = '^'..t[2]..'*(.-)'..t[2]..'*$'
+        trim = '^['..t[2]..']*(.-)['..t[2]..']*$'
     end
     return t[1]:gsub(trim, '%1')
 end
@@ -678,6 +735,7 @@ function Def._readlines_(t)
     if not file then Error.undefined('file', t[1]) end
     local res = {}
     for line in file:lines() do res[#res+1] = line end
+    setmetatable(res, {__index={islist=true}})
     return res
 end
 
@@ -686,6 +744,7 @@ function Def._writefile_(t)
     if not file then Error.undefined('file', t[2]) end
     file:write(t[1])
     file:close()
+    return true
 end
 
 function Def._readbin_(t)
@@ -701,6 +760,7 @@ function Def._writebin_(t)
     if not file then Error.undefined('file', t[2]) end
     file:write(t[1])
     file:close()
+    return true
 end
 
 function Def._input()
@@ -715,7 +775,7 @@ function Def._clock_()
 end
 
 function Def._date_(t)
-    return os.date(unpack(t))
+    return os.date(t[1], t[2])
 end
 
 function Def._time_(t)
@@ -723,7 +783,7 @@ function Def._time_(t)
 end
 
 function Def._difftime_(t)
-    return os.difftime(unpack(t))
+    return os.difftime(t[1], t[2])
 end
 
 function Def._execute_(t)
@@ -763,6 +823,7 @@ function Def._exit_(t)
 end
 
 -- bits
+
 function Def._band_(t)
     local res = t[1]
     for i=2, #t do res = res & t[i] end
