@@ -2,6 +2,7 @@
 -- re.lua
 
 local token = '_'
+local swapchar = 's'
 
 local RE = {
     shellbag = '%#%!%s*.-%f[\n]',
@@ -9,25 +10,30 @@ local RE = {
     splitspace = '[^ ]+',
 
     trimspace = '^%s*(.-)%s*$',
-    trimbracket = '^%((.-)%)$',
-    trimlist = '^%[(.-)%]$',
+    trimbracket = '^%s?%((.-)%)%s?$',
     trimdef = '^%((.-)%)$',
+    trimlist = '^%[(.-)%]$',
+    trimcode = '^%{(.-)%}$',
 
     isdef = '%b()',
     islist = '%b[]',
-    dquote = '[\"](.-)[\"]',
-    squote = '[\'](.-)[\']',
-    string = '^[\"\'](.-)[\"\']$',
+    iscode = '%b{}',
+    dquote = '%b""',
+    squote = "%b''",
+
+    unquote = '^[\"\'](.-)[\"\']$',
 
     defall = '^%(%s*(.-)%s+([%g%s]+)%)$',
     deffunc = '^%(%s*(.-)%s*%)%s+(%(.-%))$',
     defif = '^(%(%s*.-%s*%))%s+(%(.-%))$',
     defexpr = '^(.-)%s+(%(.-%))$',
     defvar = '^(%g+)%s*(.*)',
-    defname = '^(['..token..'%a%-]['..token..'%w%-]*)',
+    defname = '^(['..token..'%a]['..token..'%w]*)',
 
     token = token,
+    swapchar = swapchar,
     tokenvar = '^'..token..'.+'..token..'$',
+    swapvar = '_?('..swapchar..'%d+'..swapchar..')_?',
     specials = {},
     returns = {}
 
@@ -53,7 +59,8 @@ RE.specials[RE.tokenize('for')] = RE.tokenize('for')
 RE.specials[RE.tokenize('eval')] = RE.tokenize('eval')
 RE.specials[RE.tokenize('call')] = RE.tokenize('call')
 
-RE.returns[RE.tokenize('->')] = RE.tokenize('->')
+RE.tokenreturn = RE.tokenize('->')
+RE.returns[RE.tokenreturn] = RE.tokenreturn
 RE.returns[RE.tokenize('return')] = RE.tokenize('return')
 
 return RE

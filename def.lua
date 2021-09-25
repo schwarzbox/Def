@@ -18,7 +18,7 @@ function Def._predef_(_, predef, _)
     for k,v in pairs(predef) do
         res[k:gsub(RE.token, '')] = v
     end
-    setmetatable(res, {__index={islist=true, isdict=true}})
+    setmetatable(res, {__index={isdict=true}})
     return res
 end
 
@@ -40,7 +40,7 @@ function Def._selfdef_(_, _, scope)
             end
         end
     end
-    setmetatable(res, {__index={islist=true, isdict=true}})
+    setmetatable(res, {__index={isdict=true}})
     return res
 end
 
@@ -65,10 +65,14 @@ function Def._def_(t, predef, scope, mutate)
     local defexpr, ebody = t[1]:match(RE.defexpr)
     local defvar, vbody = t[1]:match(RE.defvar)
 
+    -- print('f',deffunc, '|', fbody)
+    -- print('e',defexpr, '|', ebody)
+    -- print('d', defvar, '|', vbody)
+
     if deffunc then
         local name, args = deffunc:match(RE.defvar)
         Error.checkVariable(name)
-        Error.checkDefinition(name, t[1], mutate and 'mut' or 'def')
+        Error.checkDefinition(name, mutate and 'mut' or 'def', t[1])
 
         local param = Eval.splitArgs(args)
 
@@ -92,7 +96,7 @@ function Def._def_(t, predef, scope, mutate)
     elseif defexpr then
         for name in defexpr:gmatch(RE.splitspace) do
             Error.checkVariable(name)
-            Error.checkDefinition(name, t[1], mutate and 'mut' or 'def')
+            Error.checkDefinition(name, mutate and 'mut' or 'def', t[1])
         end
         local vars = Eval.splitArgs(defexpr)
         local res = {Eval.eval(ebody, predef, scope)}
@@ -103,7 +107,7 @@ function Def._def_(t, predef, scope, mutate)
 
     elseif defvar then
         Error.checkVariable(defvar)
-        Error.checkDefinition(defvar, t[1], mutate and 'mut' or 'def')
+        Error.checkDefinition(defvar, mutate and 'mut' or 'def', t[1])
 
         local res = (
             scope[RE.tokenize(vbody)]
@@ -113,7 +117,7 @@ function Def._def_(t, predef, scope, mutate)
         define(scope, RE.tokenize(defvar), res, mutate)
 
     else
-        Error.unableDefine(t[1], mutate and 'mut' or 'def')
+        Error.unableDefine(mutate and 'mut' or 'def', t[1])
     end
 end
 
@@ -138,7 +142,11 @@ function Def._len_(t)
 end
 
 function Def._type_(t)
-    return type(t[1])
+    local tp = type(t[1])
+    if type(t[1]) == 'table' then
+        return t[1].islist and 'list' or t[1].isdict and 'dict' or tp
+    end
+    return tp
 end
 
 function Def._assert_(t)
@@ -167,7 +175,7 @@ function Def._return_(t)
 end
 
 function Def._eval_(t, predef, scope)
-    local expr = t[1]:gsub(RE.string, '%1')
+    local expr = t[1]:gsub(RE.unquote, '%1')
     return Eval.eval(expr, predef, scope)
 end
 
@@ -180,6 +188,12 @@ end
 
 function Def._call_(t, predef, scope)
     return Eval.eval('('..t[1]..')', predef, scope, true)
+end
+
+function Def._run_(t, predef, scope)
+    -- local output =  Eval.walk(t, predef, scope)
+    -- return output and output[#output]
+    -- return Eval.eval(table.concat(t[1], ' '), predef, scope)
 end
 
 -- math
@@ -263,7 +277,7 @@ function Def._floor_(t)
 end
 
 function Def._fmod_(t)
-    return math.fmod(t[1], t[2])
+    return math.fmod(unpack(t))
 end
 
 function Def._log_(t)
@@ -313,7 +327,7 @@ function Def._tan_(t)
 end
 
 function Def._ult_(t)
-    return math.ult(t[1], t[2])
+    return math.ult(unpack(t))
 end
 
 -- condition
@@ -358,20 +372,6 @@ function Def._not_(t)
     return not t[1]
 end
 
--- function Def._if_(t, predef, scope)
---     local cond, expr = t[1]:match(RE.defif)
-
-
---     if Eval.eval(cond, predef, scope) then
---         return Eval.eval(
---             expr:match(RE.isdef), predef, scope
---         )
---     else
---         return Eval.eval(
---             expr:gsub(RE.isdef, '', 1):match(RE.isdef), predef, scope
---         )
---     end
--- end
 
 function Def._if_(t, predef, scope)
     local cond, expr = t[1]:match(RE.defif)
@@ -408,7 +408,7 @@ function Def._for_(t, predef, scope)
     local name, iter = cond:match(RE.defvar)
 
     Error.checkVariable(name)
-    Error.checkDefinition(name, t[1], 'for')
+    Error.checkDefinition(name, 'for', t[1])
 
     local callfunc = Eval.getDef(expr, predef, scope)
 
@@ -485,8 +485,8 @@ function Def._last_(t)
 end
 
 function Def._push_(t)
-    t[2][#t[2]+1] = t[1]
-    return t[2]
+    t[1][#t[1]+1] = t[2]
+    return t[1]
 end
 
 function Def._pop_(t)
@@ -495,12 +495,14 @@ function Def._pop_(t)
 end
 
 function Def._sort_(t)
+    local res = {unpack(t[1])}
     if t[2] then
-        table.sort(t[1], function(a, b) return a>b end)
+        table.sort(res, function(a, b) return a>b end)
     else
-        table.sort(t[1])
+        table.sort(res)
     end
-    return t[1]
+    setmetatable(res, getmetatable(t[1]))
+    return res
 end
 
 function Def._flip_(t)
@@ -508,7 +510,7 @@ function Def._flip_(t)
     for i=#t[1], 1, -1 do
         res[#res+1] = t[1][i]
     end
-    setmetatable(res, {__index={islist=true}})
+    setmetatable(res, getmetatable(t[1]))
     return res
 end
 
@@ -520,16 +522,28 @@ function Def._concat_(t)
     return (t[2] and res:sub(1, #res-1)) or res
 end
 
--- dict&list
+function Def._unpack_(t)
+    return unpack(t[1], t[2] or 1, t[3] or #t[1])
+end
+
+function Def._pack_(t)
+    local res = table.pack(unpack(t))
+    setmetatable(res, {__index={islist=true}})
+    return res
+end
+
+-- dict
 
 function Def._dict_(t)
     local res = {}
     for i=1, #t do
         res[t[i][1]] = t[i][2]
     end
-    setmetatable(res, {__index={islist=true, isdict=true}})
+    setmetatable(res, {__index={isdict=true}})
     return res
 end
+
+-- dict&list
 
 function Def._keys_(t)
     local res = {}
@@ -551,52 +565,66 @@ end
 
 function Def._map_(t)
     local res = {}
-    for k,v in pairs(t[2]) do
-        res[k]=t[1]({v})
+    for k,v in pairs(t[1]) do
+        res[k]=t[2]({v})
     end
-    setmetatable(res, {__index={islist=true, isdict=true}})
+    setmetatable(res, getmetatable(t[1]))
     return res
 end
 
 function Def._filter_(t)
     local res = {}
-    for k,v in pairs(t[2]) do
-        if t[1]({v}) then
+    for k,v in pairs(t[1]) do
+        if t[2]({v}) then
             res[k]=v
         end
     end
-    setmetatable(res, {__index={islist=true, isdict=true}})
+    setmetatable(res, getmetatable(t[1]))
     return res
 end
 
-function Def._unpack_(t)
-    return unpack(t[1], t[2] or 1, t[3] or #t[1])
-end
+function Def._merge_(t)
+    local res = {}
 
-function Def._pack_(t)
-    return table.pack(unpack(t))
+    for i=1, #t do
+        if type(t[i]) == 'table' then
+            for k,v in pairs(t[i]) do
+                local key = k
+                if type(key) == 'number' and res[key] then
+                    while res[key] do
+                        key = key + 1
+                    end
+                end
+                res[key] = v
+            end
+        else
+            Error.wrongType('merge', type(t[i]), t[i])
+        end
+    end
+    setmetatable(res, {__index={isdict=true}})
+    return res
 end
 
 -- dict&list&string
 
 function Def._get_(t)
-    if type(t[2]) == 'string' then
-        return t[2]:sub(t[1],t[1])
-    elseif type(t[2]) == 'table' then
-        local res = t[2][t[1]]
+    if type(t[1]) == 'string' then
+        return t[1]:sub(t[2],t[2])
+    elseif type(t[1]) == 'table' then
+        local res = t[1][t[2]]
         if res == nil then
-            Error.undefined('key', t[1])
+            Error.undefined('key', t[2])
         end
         return res
     end
 end
 
 function Def._has_(t)
-    if type(t[2]) == 'string' then
-        return t[2]:find(t[1]) and true or false
-    elseif type(t[2]) == 'table' then
-        for _,v in pairs(t[2]) do
-            if v == t[1] then
+    if type(t[1]) == 'string' then
+        return t[1]:find(t[2]) and true or false
+    elseif type(t[1]) == 'table' then
+        for _,v in pairs(t[1]) do
+            if v == t[2] then
                 return true
             end
         end
@@ -604,55 +632,35 @@ function Def._has_(t)
 end
 
 function Def._set_(t)
-    if type(t[3]) == 'string' then
-        return t[3]:gsub(t[1],t[2])
-    elseif type(t[3]) == 'table' then
-        t[3][t[1]] = t[2]
-        return t[3]
+    if type(t[1]) == 'string' then
+        return t[1]:sub(1, t[2]-1)..t[3]..t[1]:sub(t[2]+1, #t[1])
+    elseif type(t[1]) == 'table' then
+        t[1][t[2]] = t[3]
+        return t[1]
     end
 end
 
 function Def._del_(t)
-    if type(t[2]) == 'string' then
-        return t[2]:gsub(t[1],'')
-    elseif type(t[2]) == 'table' and t[2].isdict then
-        t[2][t[1]] = nil
-        return t[2]
-    elseif type(t[2]) == 'table' then
-        table.remove(t[2], t[1])
-        return t[2]
-    end
-end
-
-function Def._merge_(t)
     if type(t[1]) == 'string' then
-        local res = ''
-        for i=1, #t do
-            res = res .. t[i]
-        end
-        return res
+        return t[1]:sub(1, t[2]-1)..t[1]:sub(t[2]+1, #t[1])
+    elseif type(t[1]) == 'table' and t[1].isdict then
+        t[1][t[2]] = nil
+        return t[1]
     elseif type(t[1]) == 'table' then
-        local res = {}
-
-        for i=1, #t do
-            for k,v in pairs(t[i]) do
-                res[k] = v
-            end
-        end
-        setmetatable(res, {__index={islist=true, isdict=true}})
-        return res
+        table.remove(t[1], t[2])
+        return t[1]
     end
 end
 
 function Def._insert_(t)
-    if type(t[3]) == 'string' then
-        return t[3]:sub(1, t[1]-1)..t[2]..t[3]:sub(t[1])
-    elseif type(t[3]) == 'table' and t[3].isdict then
-        t[3][t[1]] = t[2]
-        return t[3]
-    elseif type(t[3]) == 'table' then
-        table.insert(t[3], t[1], t[2])
-        return t[3]
+    if type(t[1]) == 'string' then
+        return t[1]:sub(1, t[2]-1)..t[3]..t[1]:sub(t[2])
+    elseif type(t[1]) == 'table' and t[1].isdict then
+        t[1][t[2]] = t[3]
+        return t[1]
+    elseif type(t[1]) == 'table' then
+        table.insert(t[1], t[2], t[3])
+        return t[1]
     end
 end
 
@@ -668,7 +676,8 @@ function Def._lower_(t)
 end
 
 function Def._capitalize_(t)
-    return string.gsub(t[1], '^.', string.upper)
+    local res = string.gsub(t[1], '^.', string.upper)
+    return res
 end
 
 function Def._title_(t)
@@ -676,23 +685,28 @@ function Def._title_(t)
     for word in t[1]:gmatch('%g+') do
         res = res .. string.gsub(word, '^.', string.upper) .. ' '
     end
-    return res:sub(1, #res-1)
+    return string.sub(res, 1, #res-1)
 end
 
 function Def._repeat_(t)
-    return t[1]:rep(t[2])
+    return string.rep(t[1], t[2])
 end
 
 function Def._replace_(t)
-    return string.gsub(t[1], t[2], t[3])
+    local res = string.gsub(t[1], t[2], t[3])
+    return res
+end
+
+function Def._reverse_(t)
+    return string.reverse(t[1])
+end
+
+function Def._find_(t)
+    return string.find(t[1], t[2])
 end
 
 function Def._match_(t)
     return string.match(t[1], t[2], t[3])
-end
-
-function Def._reverse_(t)
-    return t[1]:reverse()
 end
 
 function Def._trim_(t)
@@ -700,7 +714,20 @@ function Def._trim_(t)
     if t[2] then
         trim = '^['..t[2]..']*(.-)['..t[2]..']*$'
     end
-    return t[1]:gsub(trim, '%1')
+    local res = string.gsub(t[1], trim, '%1')
+    return res
+end
+
+function Def._join_(t)
+    local res = ''
+    for i=1, #t do
+        if type(t[i]) == 'string' then
+            res = res .. t[i]
+        else
+            Error.wrongType('join', type(t[i]), t[i])
+        end
+    end
+    return res
 end
 
 function Def._format_(t)
@@ -904,7 +931,7 @@ Def[RE.tokenize('!')] = Def._not_
 Def[RE.tokenize('true')] = true
 Def[RE.tokenize('false')] = false
 Def[RE.tokenize('->')] = Def._return_
-Def[RE.tokenize('..')] = Def._merge_
+Def[RE.tokenize('..')] = Def._join_
 -- bits
 Def[RE.tokenize('&')] = Def._band_
 Def[RE.tokenize('|')] = Def._bor_

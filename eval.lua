@@ -6,7 +6,11 @@ local unpack = table.unpack or unpack
 local Error = require('error')
 local RE = require('re')
 
-local Eval = {}
+local swapnum = os.time() + os.time() // 2
+local Eval = {swapstr = {}, swapkey = swapnum}
+
+
+
 
 function Eval.splitArgs(args, isdef)
     local arr = {}
@@ -15,7 +19,11 @@ function Eval.splitArgs(args, isdef)
 
         while match do
             if string.find(match, '%(%(', 1) then
-                args = args:gsub(RE.trimbracket, '%1')
+                local result = ''
+                for arg in args:gmatch(RE.isdef) do
+                    result = result .. ' ' .. arg:gsub(RE.trimbracket, '%1')
+                end
+                args = result
             elseif string.find(match, '%(+%s*def$')
                 or string.find(match, '%(+%s*mut$')
                 or string.find(match, '%(+%s*if$')
@@ -26,45 +34,20 @@ function Eval.splitArgs(args, isdef)
 
                 args = args:gsub(RE.isdef,
                     function(s)
-                        local def, body = s:match(RE.defall)
-
+                        local def, body = Eval.getStr(s):match(RE.defall)
                         arr[#arr+1] = {RE.tokenize(def), body}
                         return ''
                     end,
                     1
                 )
-            elseif string.find(match, '^[\"]') then
-                if #arr == 0 and isdef then
-                    Error.wrongCharAction('"', match)
-                end
-                args = args:gsub(RE.dquote,
-                    function(s)
-                        arr[#arr+1] = s
-                        return ''
-                    end,
-                    1
-                )
-            elseif string.find(match, '^[\']') then
-                if #arr == 0 and isdef then
-                    Error.wrongCharAction("'", match)
-                end
-                args = args:gsub(RE.squote,
-                    function(s)
-                        arr[#arr+1] = s
-                        return ''
-                    end,
-                    1
-                )
-            elseif string.find(match, '%[') then
+             elseif string.find(match, '%[') then
                 args = args:gsub(RE.islist,
                     function(s)
-                        for tab in string.gmatch(s, RE.islist) do
-                            arr[#arr+1] = Eval.splitArgs(
-                                tab:gsub(RE.trimlist, '%1'),
-                                false
-                            )
-                            setmetatable(arr[#arr], {__index={islist=true}})
-                        end
+                        arr[#arr+1] = Eval.splitArgs(
+                            s:gsub(RE.trimlist, '%1'),
+                            false
+                        )
+                        setmetatable(arr[#arr], {__index={islist=true}})
                         return ''
                     end,
                     1
@@ -72,33 +55,34 @@ function Eval.splitArgs(args, isdef)
             elseif string.find(match, '%(') then
                 args = args:gsub(RE.isdef,
                     function(s)
-                        for tab in string.gmatch(s, RE.isdef) do
-                            arr[#arr+1] = Eval.splitArgs(
-                                tab:gsub(RE.trimdef, '%1'),
-                                true
-                            )
-                            setmetatable(arr[#arr], {__index={isdef=true}})
-                        end
+                        arr[#arr+1] = Eval.splitArgs(
+                            s:gsub(RE.trimdef, '%1'),
+                            true
+                        )
+                        setmetatable(arr[#arr], {__index={isdef=true}})
                         return ''
                     end,
                     1
                 )
             elseif tonumber(match) then
+                if #arr == 0 and isdef then
+                    Error.wrongCharInFirstAction(match, 'number')
+                end
                 args = args:gsub(match, '', 1)
 
                 arr[#arr+1] = tonumber(match)
             else
                 local old = args
+
                 args = args:gsub(match, '', 1)
                 if old==args then
                     Error.wrongCharInput(match)
                 end
 
                 arr[#arr+1] = RE.tokenize(match)
-
             end
-
             match = string.match(args, RE.splitspace)
+
         end
     end
 
@@ -112,6 +96,18 @@ function Eval.isBool(value)
     return false
 end
 
+function Eval.getStr(value)
+    return value:gsub(RE.swapvar,
+        function(s)
+            return Eval.swapstr[s]
+        end
+    ):gsub(RE.swapvar,
+        function(s)
+            return Eval.swapstr[s]
+        end
+    )
+end
+
 function Eval.getDef(value, predef, scope)
     return (
         scope[value]
@@ -123,17 +119,18 @@ end
 function Eval.replaceArgs(value, predef, scope)
 
     if type(value) == 'string' then
+        local result, num = Eval.getStr(value):gsub(RE.unquote, '%1')
+        if num>0 then return result end
+
         if Eval.isBool(value) then return predef[value] end
 
-        if (
-            scope[value] == false
-            or (scope[RE.tokenscope] and scope[RE.tokenscope][value] == false)
-        ) then
+        if scope[value] == false
+            -- or (scope[RE.tokenscope] and scope[RE.tokenscope][value] == false)
+        then
             return false
         end
 
-        local result = Eval.getDef(value, predef, scope)
-
+        result = Eval.getDef(value, predef, scope)
         if Eval.isBool(result) then return predef[result] end
 
         if result == nil and value:match(RE.tokenvar) then
@@ -157,14 +154,23 @@ function Eval.convertArgs(values, predef, scope)
 end
 
 function Eval.exeTree(action, values, predef, scope)
-    local act = Eval.getDef(action, predef, scope)
+    local act = Eval.getStr(action)
+    if act ~= action then
+        Error.wrongCharInFirstAction(act, type(act))
+    end
+
+    act = Eval.getDef(action, predef, scope)
 
     if not RE.specials[action] then
         Eval.convertArgs(values, predef, scope)
     end
 
     if act then
-        return act(values, predef, scope)
+        if type(act) == 'function' then
+            return act(values, predef, scope)
+        else
+            Error.wrongCharInFirstAction(act, type(act))
+        end
     else
         Error.undefined('action', action:gsub(RE.token, ''))
     end
@@ -172,26 +178,62 @@ end
 
 function Eval.walkTree(tree, predef, scope)
     local args = {}
-    local action = tree[1]
 
-    for i=2, #tree do
-        if type(tree[i]) == 'table' and not tree[i].islist then
-            local results = {Eval.walkTree(tree[i], predef, scope)}
-            for j=1, #results do
-                args[#args+1] = results[j]
+    if type(tree) == 'table' then
+        local action = tree[1]
+
+            for i=2, #tree do
+                if type(tree[i]) == 'table' then
+                    if tree[i].islist or tree[i].isdict then
+                        args[#args+1] = tree[i]
+                    else
+                        local results = {Eval.walkTree(tree[i], predef, scope)}
+                        for j=1, #results do
+                            args[#args+1] = results[j]
+                        end
+                    end
+                else
+                    args[#args+1] = tree[i]
+                end
             end
-        else
-            args[#args+1] = tree[i]
-        end
+
+        return Eval.exeTree(action, args, predef, scope)
+    else
+        return Eval.exeTree(RE.tokenreturn, {tree}, predef, scope)
     end
-    return Eval.exeTree(action, args, predef, scope)
 end
 
+
 function Eval.cleanArgs(args)
-    args = args:gsub(RE.shellbag, '')
-    return (
-        (args .. '\n')
-        :gsub(RE.comment, '')
+    args = args:gsub(RE.shellbag, ''):gsub(RE.comment, ''):gsub('\n','')..'\n'
+
+    local swap = args
+    for match in swap:gmatch('[\"\']') do
+        if match == '"' then
+            swap = swap:gsub(RE.dquote,
+                function(s)
+                    Eval.swapkey = Eval.swapkey+1
+                    local key = RE.swapchar..Eval.swapkey..RE.swapchar
+                    Eval.swapstr[key] = s
+                    return key
+                end,
+                1
+            )
+        elseif  match == "'" then
+            swap = swap:gsub(RE.squote,
+                function(s)
+                    Eval.swapkey = Eval.swapkey+1
+                    local key = RE.swapchar..Eval.swapkey..RE.swapchar
+                    Eval.swapstr[key] = s
+                    return key
+                end,
+                1
+            )
+        end
+    end
+
+    local cleaned = (
+        swap
         :gsub('%s+',' ')
         :gsub('%s+%)',')')
         :gsub('%(%s+','(')
@@ -199,26 +241,30 @@ function Eval.cleanArgs(args)
         :gsub('%)%s+%)','))')
         :gsub(RE.trimspace, '%1')
     )
+
+    Error.checkBraces(cleaned)
+    Error.checkQuotes(cleaned)
+
+    return cleaned
 end
 
 function Eval.run(args, predef, scope)
     local output = {}
 
     if args then
-        Error.checkBraces(args)
-        Error.checkQuotes(args)
-
-        local tree = Eval.splitArgs(Eval.cleanArgs(args))
+        local cleaned = Eval.cleanArgs(args)
+        local tree = Eval.splitArgs(cleaned)
 
         for i=1, #tree do
             output[#output+1] = {Eval.walkTree(tree[i], predef, scope)}
-            -- finish evaluate after first return
-            if RE.returns[tree[i][1]] then
+
+            -- 1 finish evaluate after first return
+            -- 2 return literals
+            if type(tree[i]) == 'table' and RE.returns[tree[i][1]] then
                 break
             end
         end
     end
-
     -- return last expr in definition
     return output and output[#output]
 end

@@ -19,6 +19,7 @@ function Error.error(message, scope)
 end
 
 function Error.getError(message, scope)
+    -- print(message)
     local space = (scope[RE.tokendefined] or 'root')
     return (
     'Error: '..message:gsub('[%g%s]+: ','')..' | '.. space
@@ -33,36 +34,39 @@ function Error.notexpression(inp)
     error('wrong expression '.. inp)
 end
 
+function Error.unableDefine(action, definition)
+    error('unable to define | ('..action..' '..definition..')')
+end
+
+function Error.wrongCharInFirstAction(inp, char)
+    error('wrong char in first action '..inp..' | '.. char)
+end
+
 function Error.wrongCharInput(inp)
     error('wrong char in input '..inp)
 end
 
-
-function Error.wrongChar(char, inp)
+function Error.wrongChar(inp, char)
     error('wrong char in '..inp..' | '.. char)
 end
 
-function Error.wrongCharAction(char, inp)
-    error('wrong char in action '..inp..' | '.. char)
+function Error.wrongType(action, type, param)
+    error('wrong type for '..action..' | '..type..' | '.. param)
 end
 
-function Error.unableDefine(definition, action)
-    error('unable to define | ('..action..' '..definition..')')
-end
-
-function Error.checkDefinition(inp, definition, action)
+function Error.checkDefinition(inp, action, definition)
     if not inp:match(RE.defname) then
-        Error.unableDefine(definition, action)
+        Error.unableDefine(action, definition)
     end
 end
 
 function Error.checkVariable(inp)
     if string.find(inp, RE.token) then
-        Error.wrongChar(RE.token, inp)
+        Error.wrongChar(inp, RE.token)
     end
 
     if string.find(inp, '-') then
-        Error.wrongChar('-', inp)
+        Error.wrongChar(inp, '-')
     end
 end
 
