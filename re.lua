@@ -1,8 +1,11 @@
 -- DEF
 -- re.lua
 
+local salt = os.time() // 128
+local swapchar = 't'
+local swapkey = os.time() + salt
 local token = '_'
-local swapchar = 's'
+local lazy = '@'
 
 local RE = {
     shellbag = '%#%!%s*.-%f[\n]',
@@ -13,33 +16,39 @@ local RE = {
     trimbracket = '^%s?%((.-)%)%s?$',
     trimdef = '^%((.-)%)$',
     trimlist = '^%[(.-)%]$',
-    trimcode = '^%{(.-)%}$',
+    trimlazy = '^'..lazy..'%[(.-)%]$',
 
     isdef = '%b()',
     islist = '%b[]',
-    iscode = '%b{}',
+    islazy = lazy..'%b[]',
+    islazydef = lazy..'(%b())',
     dquote = '%b""',
     squote = "%b''",
+    dbraces = '%(%(',
 
     unquote = '^[\"\'](.-)[\"\']$',
 
     defall = '^%(%s*(.-)%s+([%g%s]+)%)$',
-    deffunc = '^%(%s*(.-)%s*%)%s+(%(.-%))$',
-    defif = '^(%(%s*.-%s*%))%s+(%(.-%))$',
-    defexpr = '^(.-)%s+(%(.-%))$',
+    deffunc = '^%(%s*(.-)%s*%)%s+(.*)$',
+    defcond = '^(%b())%s+(%(.*%))$',
+    defswitch = '(%b())%s+(%b())',
+    defexpr = '^(.-)%s+(%(.*%))$',
     defvar = '^(%g+)%s*(.*)',
-    defname = '^(['..token..'%a]['..token..'%w]*)',
+    defname = '^([%a][%w]*)',
+    excluded = '[`~!@#$%%^&*%(%)-_+=%{%}%[%]|\\"\'?/;:<>,%.]',
 
+    lazy = lazy,
     token = token,
+    tokenvar = '^'..token..salt..token..'(.+)'..token..salt..token..'$',
     swapchar = swapchar,
-    tokenvar = '^'..token..'.+'..token..'$',
-    swapvar = '_?('..swapchar..'%d+'..swapchar..')_?',
-    specials = {},
-    returns = {}
+    swapkey = swapkey,
+    swapdef = '('..swapchar..'%d+'..swapchar..')',
+    swapvar = token..salt..token..'('..swapchar..'%d+'..swapchar..')'..token..salt..token,
 
+    specials = {},
 }
 function RE.tokenize(str)
-    return RE.token..str..RE.token
+    return RE.token..salt..RE.token..str..RE.token..salt..RE.token
 end
 
 RE.tokenscope = RE.tokenize('scope')
@@ -48,19 +57,30 @@ RE.tokentrue = RE.tokenize('true')
 RE.tokenfalse = RE.tokenize('false')
 RE.tokenbreak = RE.tokenize('break')
 RE.tokencontinue = RE.tokenize('continue')
-RE.tokeniffunc = RE.tokenize('iffunc')
-RE.tokenforfunc = RE.tokenize('forfunc')
-RE.tokenforiter = RE.tokenize('foriter')
+RE.tokenreturn = RE.tokenize('return')
 
-RE.specials[RE.tokenize('def')] = RE.tokenize('def')
-RE.specials[RE.tokenize('mut')] = RE.tokenize('mut')
-RE.specials[RE.tokenize('if')] = RE.tokenize('if')
-RE.specials[RE.tokenize('for')] = RE.tokenize('for')
-RE.specials[RE.tokenize('eval')] = RE.tokenize('eval')
-RE.specials[RE.tokenize('call')] = RE.tokenize('call')
+RE.tokendef = RE.tokenize('def')
+RE.tokenmut = RE.tokenize('mut')
+RE.tokenlambda = RE.tokenize('lambda')
+RE.tokenL = RE.tokenize('L')
+RE.tokenif = RE.tokenize('if')
+RE.tokenswitch = RE.tokenize('switch')
+RE.tokenwhile = RE.tokenize('while')
+RE.tokenfor = RE.tokenize('for')
+RE.tokeneval = RE.tokenize('eval')
+RE.tokentry = RE.tokenize('try')
 
-RE.tokenreturn = RE.tokenize('->')
-RE.returns[RE.tokenreturn] = RE.tokenreturn
-RE.returns[RE.tokenize('return')] = RE.tokenize('return')
+RE.specials[RE.tokendef] = RE.tokendef
+RE.specials[RE.tokenmut] = RE.tokenmut
+RE.specials[RE.tokenlambda] = RE.tokenlambda
+RE.specials[RE.tokenL] = RE.tokenL
+RE.specials[RE.tokenif] = RE.tokenif
+RE.specials[RE.tokenswitch] = RE.tokenswitch
+RE.specials[RE.tokenwhile] = RE.tokenwhile
+RE.specials[RE.tokenfor] = RE.tokenfor
+RE.specials[RE.tokeneval] = RE.tokeneval
+RE.specials[RE.tokentry] = RE.tokentry
+
+RE.tokenshow = RE.tokenize('show')
 
 return RE
