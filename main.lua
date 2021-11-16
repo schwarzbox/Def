@@ -1,20 +1,23 @@
 #!/usr/bin/env lua
 -- DEF
--- 0.8
+-- 1.0
 -- REPL (lua)
 -- main.lua
 
 -- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua /Library/Frameworks/Lua-5.3/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.3/bin/../include
 
--- luastatic main.lua settings.lua eval.lua re.lua def.lua tests.lua error.lua /Library/Frameworks/Lua-5.3/bin/../lib/libluajit-5.1.a -I/Library/Frameworks/Lua-5.3/bin/../include/luajit-2.0 -pagezero_size 10000 -image_base 100000000
+-- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua tests.lua /Library/Frameworks/Lua-5.3/bin/../lib/libluajit-5.1.a -I/Library/Frameworks/Lua-5.3/bin/../include/luajit-2.0 -pagezero_size 10000 -image_base 100000000
 
+
+-- 1.1
+-- line error
 
 local settings = require('settings')
 
 local Def = require('def')
 local Eval = require('eval')
 local RE = require('re')
--- local Tests = require('tests')
+local Tests = require('tests')
 
 local function evaluate(expr, scope, safecall)
     local result, error = Eval.eval(expr, Def, scope, safecall)
@@ -24,7 +27,7 @@ local function evaluate(expr, scope, safecall)
     elseif error then
         io.write(error,'\n')
     else
-        -- io.write('\nTDTTOE\n')
+        io.write('\nTDTTOE\n')
     end
 end
 
@@ -35,9 +38,9 @@ local function main()
             io.write(settings.HELP,'\n')
         elseif arg[1] == '-version' or arg[1] == '-v' then
             io.write(settings.VERSION,'\n')
-        -- elseif arg[1] == '-test' or arg[1] == '-t' then
-        --     io.write(settings.VERSION, ' REPL', '\n')
-        --     Tests.run(Eval, Def)
+        elseif arg[1] == '-test' or arg[1] == '-t' then
+            io.write(settings.VERSION, ' REPL', '\n')
+            Tests.run(Eval, Def)
         else
             io.write(settings.VERSION, ' REPL', '\n')
             io.write(settings.HELP, '\n')
@@ -45,7 +48,8 @@ local function main()
     elseif arg[1] then
         local file = io.open(arg[1], 'r')
         if not file then
-            local result = evaluate(arg[1], {})
+            local inp = arg[1]:gsub('(%()%s*show ', '%1')
+            local result = evaluate(inp, {})
             if result then
                 Def[RE.tokenshow]({result})
             end
@@ -61,7 +65,8 @@ local function main()
         local scope = {}
         while true do
             io.output():write(settings.PROMPT)
-            local result = evaluate(io.input():read(), scope, true)
+            local inp = io.input():read():gsub('(%()%s*show ', '%1')
+            local result = evaluate(inp, scope, true)
             if result then
                 Def[RE.tokenshow]({result})
             end

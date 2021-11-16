@@ -2,10 +2,10 @@
 -- re.lua
 
 local salt = os.time() // 128
-local swapchar = 't'
+local swapchar = 's'
 local swapkey = os.time() + salt
-local token = '_'
 local lazy = '@'
+local token = '_'..salt..'_'
 
 local RE = {
     shellbag = '%#%!%s*.-%f[\n]',
@@ -18,14 +18,13 @@ local RE = {
     trimlist = '^%[(.-)%]$',
     trimlazy = '^'..lazy..'%[(.-)%]$',
 
-    isdef = '%b()',
-    islist = '%b[]',
+    dbraces = '%(%(',
     islazy = lazy..'%b[]',
-    islazydef = lazy..'(%b())',
+    islist = '%b[]',
+    isdef = '%b()',
+
     dquote = '%b""',
     squote = "%b''",
-    dbraces = '%(%(',
-
     unquote = '^[\"\'](.-)[\"\']$',
 
     defall = '^%(%s*(.-)%s+([%g%s]+)%)$',
@@ -35,20 +34,22 @@ local RE = {
     defexpr = '^(.-)%s+(%(.*%))$',
     defvar = '^(%g+)%s*(.*)',
     defname = '^([%a][%w]*)',
-    excluded = '[`~!@#$%%^&*%(%)-_+=%{%}%[%]|\\"\'?/;:<>,%.]',
+    excluded = '[`~!@#$%%^&*%(%)-_+=%{%}%[%]|\\\"\'?/;:<>,%.]',
 
+    errsep = ' > ',
     lazy = lazy,
     token = token,
-    tokenvar = '^'..token..salt..token..'(.+)'..token..salt..token..'$',
+    tokenvar = '^'..token..'(.+)'..token..'$',
     swapchar = swapchar,
     swapkey = swapkey,
     swapdef = '('..swapchar..'%d+'..swapchar..')',
-    swapvar = token..salt..token..'('..swapchar..'%d+'..swapchar..')'..token..salt..token,
+    swapvar = token..'('..swapchar..'%d+'..swapchar..')'..token,
 
     specials = {},
 }
+
 function RE.tokenize(str)
-    return RE.token..salt..RE.token..str..RE.token..salt..RE.token
+    return RE.token..str..RE.token
 end
 
 RE.tokenscope = RE.tokenize('scope')

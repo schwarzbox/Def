@@ -2,7 +2,7 @@
 -- error.lua
 
 local RE = require('re')
--- local Tests = require('tests')
+local Tests = require('tests')
 
 local Error = {}
 
@@ -10,18 +10,18 @@ local Error = {}
 function Error.error(message, scope)
     local err = Error.getError(message, scope)
 
-    -- if Tests.isdebug then
-    --     Tests.savederror = err
-    -- else
+    if Tests.isdebug then
+        Tests.savederror = err
+    else
         io.write(err..'\n')
         os.exit(0)
-    -- end
+    end
 end
 
 function Error.getError(message, scope)
     local path = 'root'
     if scope[RE.tokendefined] then
-        path = 'root.'.. scope[RE.tokendefined]
+        path = 'root'..RE.errsep.. scope[RE.tokendefined]
     end
 
     return (

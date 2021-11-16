@@ -2,7 +2,7 @@
 
 Programming language from Scheme family.
 
-v0.8
+v1.0
 
 Def is implemented in Lua.
 
@@ -200,14 +200,3 @@ Examples.
 )
 (show (colatz 19))
 ```
-
-# Features
-
-Can't process empty file (comments ignored)
-
-Explicit return
-
-Lazy evaluation
-
-
-

@@ -39,6 +39,7 @@ Tests.tests = {
     {'(def var1 (+ 42 42)) ; (def var2 (+ 2 2))\n (# (selfdef))', {1}, 'comment'},
     {'(def file "'.. Tests.tmpexpr.. '") (writefile file "; (+ 42 1)") (load file)', {'error'}},
     {'(def file "'.. Tests.tmpexpr.. '") (writefile file "(+ 42 1)") (load file)', {43}},
+
     -- show
     {'(# (show (? show)))', {10}},
     {'(# (show))', {0}},
@@ -200,12 +201,14 @@ Tests.tests = {
     {'(if ("") (true) (false))', {true}},
     {'(if (false) (true) (false))', {false}},
     {'(if (== 0 1) (true))', {false}},
+    {'(if (== 2 2))', {'error'}},
+    {'(if (== 4 4) (def x 1) (def y 0)) ( y)', {'error'}},
     {'(def x 1) (switch (== x 1) ("kiss") (== x 2) ("42"))', {'kiss'}},
     {'(def x 1) (def lst []) (while (true) (switch (== x 3) (break) (== x 2) ((push lst x) (continue)) (true) ((push lst x) (mut x (+ x 1))))) (# lst)', {3}},
     {'(def x 1) (def lst []) (while (< (# lst) 1) (switch (== x 3) (push lst x) (true) (mut x (+ x 1)))) (last lst)', {3}},
     {'(def x 3) (switch (== x 1) (1) (== x 2) (2) (true) ("default"))', {'default'}},
     {'(def x 3) (switch (== x 1) (1) (== x 2) (2))', {'error'}},
-
+    {'(def x 1) (switch (== x 1) () (== x 2) ())', {'error'}},
 
     -- for
     {'(def x 0) (for (var [2 4]) (mut x (+ var 1))) (x)', {5}, 'for'},
@@ -214,6 +217,7 @@ Tests.tests = {
     {'(def x (for (var (range 2 8)) (if (== var 4) (var) (* var 4)))) (x)', {32}},
     {'(def x (for (var (range 0 8)) (if (== var 2) (break) (mut var (* 4 var)))))', {4}},
     {'(def x (for (var []) (var))) x', {false}},
+    {'(for ("var" [2 4]) (var))', {'error'}},
 
     -- while
     {'(def cnt 0) (while (&& (< cnt 64) (> cnt -1)) (mut cnt (+ cnt 1))) cnt', {64}},
@@ -235,6 +239,8 @@ Tests.tests = {
     {'(def x 0) (for (var (range 1 8)) (if (== var 4) (continue)) (mut x (+ x 1))) (x)', {7}},
     {'(def x 0) (for (var (range 2 8)) (if (== var 4) (continue) (mut x var))) x', {8}},
     {'(def x (for (var (range 2 4)) (if (== var 4) (continue) (* var 2)))) x', {6}},
+    {'(? (continue))', {'error'}},
+    {'(if (== 2 2) (break) (mut var (* 4 var)))', {'error'}},
 
     -- return
     {'(def (func x) (if (> x 2) ("return"))) (func 3)', {'return'}, 'return'},
@@ -244,9 +250,6 @@ Tests.tests = {
     {'(def (func x) (def (f y) (+ x y)) f) (def savefunc (func 2)) (savefunc 40)', {42},},
     {'(def (func) upper) (def savefunc (func)) (savefunc "kiss")', {'KISS'}},
     {'(def (main x) (def (f1 y) (def (f2 z) (* x y z)) f2) f1) (def setmain (main 2)) (def setfunc (setmain 4)) (setfunc 8)', {64}},
-    {'(def z ["Z"]) (first z)', {"Z"}},
-    {'(def z (list "Z")) (first z)', {"Z"}},
-    {'(def z ("Z")) (first z)', {'error'}},
 
     -- list
     {'(last (range 2 8))', {8}, 'list'},
@@ -284,6 +287,9 @@ Tests.tests = {
     {'(def lst [1 2 3 4 5 6]) (move lst 2 (# lst) 1) (get lst 1)', {2}},
     {'(def lst [1 2 3 4 5 6]) (move lst 1 3 4) (get lst 4)', {1}},
     {'(def cp []) (def lst [1 2 3 4 5 6]) (move lst 1 3 4 cp) (get cp 4)', {1}},
+    {'(insert [1 2 3 4] 6 5)', {'error'}},
+    {'(insert [1 2 3 4] "5" 5)', {'error'}},
+    {'(set ["k" "v"] 4 "kiss")', {'error'}},
 
     -- dict
     {'(# (dict))', {0}, 'dict'},
@@ -306,6 +312,8 @@ Tests.tests = {
     {'(# (merge (range 1 8) (range 16 32 4)))', {13}},
     {'(? (merge (range 1 8) (range 16 32 4)))', {'list'}},
     {'(get (merge (dict ["?" "42"]) (dict ["kiss" "kiss"])) "?")', {'42'}},
+    {'(merge ["?" 42] "kiss" "32")', {'error'}},
+    {'(merge "kiss" ["?" 42])', {'error'}},
 
     -- list&dict&string
     {'(get "kiss" 1)', {'k'}, 'list&dict&string'},
@@ -333,6 +341,10 @@ Tests.tests = {
     {'(def var "kiss") (next var 1)', {'i'}},
     {'(def lst [1 2 3 4 5 6]) (next lst)', {1, 1}},
     {'(def lst [1 2 3 4 5 6]) (next lst 1)', {2, 2}},
+    {'(def dct (dict [])) (# dct)', {'error'}},
+    {'(def dct (dict ["k"])) (# dct)', {'error'}},
+    {'(get (del (dict ["42" "kiss"]) "42") "42")', {'error'}},
+    {'(get (del [2 4] 1) 2)', {'error'}},
 
     -- string
     {'(upper "kiss")', {"KISS"}, 'string'},
@@ -364,6 +376,7 @@ Tests.tests = {
     {'(unpack (char 65 66 67) 1 1)', {'A'}},
     {'(def a b c (unpack (char 65 66 67))) (c)', {'C'}},
     {'(insert (unpack ["kiss" 5 "42"]))', {"kiss42"}},
+    {'(get "kiss" 0)', {'error'}},
 
     -- input
     {'(def f "'.. Tests.tmpfile.. '") (writefile f "42") (readfile f)', {'42'}, 'input'},
@@ -388,8 +401,8 @@ Tests.tests = {
     {'(def f (open "'.. Tests.tmpfile.. '" "w")) (buffer f "line") (write f "kiss") (def var (readfile "'.. Tests.tmpfile.. '")) (close f) (var)', {''}},
     {'(def f (open "'.. Tests.tmpfile.. '" "w")) (buffer f "line") (write f "kiss\n") (readfile "'.. Tests.tmpfile.. '")', {'kiss\n'}},
     {'(def f (open "'.. Tests.tmpfile.. '" "w")) (buffer f "full") (write f "kiss\n") (flush f) (readfile "'.. Tests.tmpfile.. '")', {'kiss\n'}},
-    -- for tests 3
-    {'(# ARGS)', {3}},
+    {'(readfile "nofile")', {'error'}},
+    -- {'(# ARGS)', {3}},
     -- {'(input "42")', '42'},
 
     -- os
@@ -409,12 +422,16 @@ Tests.tests = {
     {'(getenv "HOME")', {os.getenv('HOME')}},
     {'(setlocale)', {os.setlocale()}},
     {'(setlocale "fr_FR") ((num 3.14))', {tonumber(3.14); os.setlocale('C')}},
+    {'(setlocale "all")', {'error'}},
     -- {'(exit true) (exit 1)', {true}},
     -- {'(exit false) (exit 0)', {false}},
 
     --def
     {'((def x 0))', {0}, 'def'},
     {'((mut x 0))', {0}},
+    {'(def z ["Z"]) (first z)', {"Z"}},
+    {'(def z (list "Z")) (first z)', {"Z"}},
+    {'(def z ("Z")) (first z)', {'error'}},
     {'(def (func x) (x)) (func 128)', {128}},
     {'(def (func x) (x)) (func "kiss")', {'kiss'}},
     {'(def (func x) (x)) (func true)', {true}},
@@ -458,12 +475,8 @@ Tests.tests = {
     {'(def (func) (for (var (range 2 16)) ((if (== var 4) (var) ((* 4 var))) (var)))) ((func))', {16}},
     {'(def (func st) (upper st)) (func "kiss")', {'KISS'}},
     {'(def (func s1) (def s2 "ss \'def\'") (upper (.. s1 s2))) ((func \'ki\'))',{"KISS 'DEF'"}},
-
-    -- lambda
-    {'(concat (map [1 2 3] (L () (1))) "|")', {'1|1|1'}, 'lambda'},
-    {'(first (map [1 2 3] (lambda (x) (+  x 1))))', {2}},
-    {'(map [1 2 3] (lambda (x) (+  x 1))) (# (selfdef))', {0}},
-    {'(last (last (map [1 2 3] (L (*) (push * (+ (get * 1) 1))))))', {4}},
+    {'(def (func) (upper)) (func)', {'error'}},
+    {'(def (fake) (def x 2)) (func)', {'error'}},
 
     -- mut
     {'(def var 0) (for (var (range 2 4)) (def var (+ var var))) (var)', {0}, 'mut'},
@@ -471,14 +484,20 @@ Tests.tests = {
     {'(def x 0) (def tab (dict ["?" 4])) (for (var tab) (mut x (get tab var))) (x)', {4}},
     {'(def (func) (for (v1 (range 2 16)) (for (v2 (range 2 16)) ((if (== v2 4) (mut x (* v2 2)) (mut y (* v1 2))))))) (func)', {32}},
     {'(def (func) (for (v1 (range 2 16)) (for (v2 (range 2 16)) ((if (== v2 4) (mut x (* v2 2))))))) (func)', {8}},
-
     {'(def x 0) (def (func) (for (var (range 2 8)) ((if (== var 4) (mut x var) (mut x (* 2 var))) (var)))) (func) (x)', {16}},
+
+    -- lambda
+    {'(concat (map [1 2 3] (L () (1))) "|")', {'1|1|1'}, 'lambda'},
+    {'(first (map [1 2 3] (lambda (x) (+  x 1))))', {2}},
+    {'(map [1 2 3] (lambda (x) (+  x 1))) (# (selfdef))', {0}},
+    {'(last (last (map [1 2 3] (L (*) (push * (+ (get * 1) 1))))))', {4}},
 
     -- scope
     {'(def (func x) ((+ 1 x))) (def (same) (mut (func y) ((+ 2 y))) (func 1)) ((same))', {3}, 'scope'},
     {'(def (func x) ((+ 1 x))) (def (same) (def (func y) ((+ 2 y))) (func 1)) ((same))', {3}},
     {'(def (func x) ((+ 1 x))) (def (diff) (def (func y) ((+ 2 y))) (func 1)) (diff) ((func 1))', {2}},
-    {'(def (nif x) (if (> x 1) (if (== x 2) ("two") (if (== x 3) ("three") ("four"))) ("zero"))) (nif 5)', {'four'}},
+    {'(def (func x) (if (> x 1) (if (== x 2) ("two") (if (== x 3) ("three") ("four"))) ("zero"))) (func 5)', {'four'}},
+    {'(def (func) ((def x 2))) (func) (x)', {'error'}},
 
     -- integration
     {'(def (func v1) ((def v2 1) ((+ v1 v2)))) ((func 1))', {2}, 'integration'},
@@ -525,55 +544,31 @@ Tests.tests = {
     {'(last [@false true])', {true}},
     {'(def cd @[]) (push cd @)', {'error'}},
     {'(@false)', {'error'}},
+    {'@(@[upper])', {'(@[upper])'}},
 
     -- error
-    {'(merge ["?" 42] "kiss" "32")', {'error'}, 'error'},
-    {'(def (empty)) (empty)', {'error'}},
-    {'(merge "kiss" ["?" 42])', {'error'}},
-    {'(for ("var" [2 4]) (var))', {'error'}},
-    {'(def "var" 2) (var)', {'error'}},
-    {'(def "var1" "var2" (unpack ["kiss" "42"]))', {'error'}},
-    {'(def ("var") (false))', {'error'}},
-    {'('..RE.tokenize('predef')..')', {'error'}},
-    {'(def -var  (- 1 -1))', {'error'}},
-    {'(def (func-func var)  (-1))', {'error'}},
-    {'(def (_func var)  (-1))', {'error'}},
-    {'(def (func_ var)  (-1))', {'error'}},
-    {'(def (func) (upper)) (func)', {'error'}},
-    {'(# [undef merge])', {'error'}},
+    {'(? ())', {'error'}, 'error'},
+    {'(if () (true) (false))', {'error'}},
+    {'(var)', {'error'}},
     {'(# #)', {'error'}},
     {'(def e )', {'error'}},
     {'(def e ())', {'error'}},
     {'(def (emp) ()) (? (emp))', {'error'}},
-    {'(if (== 2 2))', {'error'}},
+    {'(def (empty)) (empty)', {'error'}},
+    {'('..RE.tokenize('predef')..')', {'error'}},
+    {'(def ("var") (false))', {'error'}},
+    {'(def "var1" "var2" (unpack ["kiss" "42"]))', {'error'}},
+    {'(def "var" 2) (var)', {'error'}},
+    {'(def -var  (- 1 -1))', {'error'}},
+    {'(def (func-func var)  (-1))', {'error'}},
+    {'(def (_func var)  (-1))', {'error'}},
+    {'(def (func_ var)  (-1))', {'error'}},
+    {'(# [undef merge])', {'error'}},
     {'(def 42var 42)', {'error'}},
     {'(def var@ 2)', {'error'}},
     {'(def ?var 2)', {'error'}},
     {'(def ^v^ 2) (show ^v^)', {'error'}},
-    {'(def (func) ((def x 2))) (func) (x)', {'error'}},
-    {'(def (fake) (def x 2)) (func)', {'error'}},
-    {'(var)', {'error'}},
-    {'(if (== 4 4) (def x 1) (def y 0)) ( y)', {'error'}},
-    {'(def ('..RE.tokenize('func')..') (true))', {'error'}},
-    {'(if (== 4 4) (def '..RE.tokenize('x')..' 1)) ('..RE.tokenize('x')..')', {'error'}},
-    {'(for ('..RE.tokenize('var')..' [2 4]) ('..RE.tokenize('var')..'))', {'error'}},
-    {'(eval "(def '..RE.tokenize('var')..' ("predef"))") ('..RE.tokenize('var')..')', {'error'}},
-    {'(def var #n) (if (var) (true) (false))', {'error'}},
-    {'(get (del (dict ["42" "kiss"]) "42") "42")', {'error'}},
-    {'(get (del [2 4] 1) 2)', {'error'}},
-    {'(get "kiss" 0)', {'error'}},
-    {'(insert [1 2 3 4] 6 5)', {'error'}},
-    {'(insert [1 2 3 4] "5" 5)', {'error'}},
-    {'(set ["k" "v"] 4 "kiss")', {'error'}},
-    {'(readfile "nofile")', {'error'}},
-    {'(setlocale "all")', {'error'}},
-    {'(def dct (dict [])) (# dct)', {'error'}},
-    {'(def dct (dict ["k"])) (# dct)', {'error'}},
-    {'(if () (true) (false))', {'error'}},
-    {'(? ())', {'error'}},
-    {'(def x 1) (switch (== x 1) () (== x 2) ())', {'error'}},
-    {'(? (continue))', {'error'}},
-    {'(if (== 2 2) (break) (mut var (* 4 var)))', {'error'}}
+    {'(def var #n)', {'error'}},
 }
 
 function Tests.assert(results, test)

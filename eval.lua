@@ -25,40 +25,43 @@ function Eval.splitArgs(args, islazy)
                     result = result .. ' ' .. arg:gsub(RE.trimbracket, '%1')
                 end
                 args = result
-            elseif key == RE.lazy and string.find(match, RE.lazy..'%[') then
-                args = args:gsub(RE.islazy,
-                    function(s)
-                        arr[#arr+1] = Eval.splitArgs(
-                            s:gsub(RE.trimlazy, '%1'), true
-                        )
-                        setmetatable(arr[#arr], {__index={islazy=true}})
-                        return ''
-                    end,
-                    1
-                )
-            elseif key == RE.lazy and string.find(match, RE.lazy..'%(') then
-                args = args:gsub(RE.islazydef,
-                    function(s)
-                        if #s==0 then
-                            Error.wrongLazy(match)
-                        end
+            elseif key == RE.lazy  then
+                key = string.match(match, '[%(%[]')
+                if key == '[' then
+                    args = args:gsub(RE.islazy,
+                        function(s)
+                            arr[#arr+1] = Eval.splitArgs(
+                                s:gsub(RE.trimlazy, '%1'), true
+                            )
+                            setmetatable(arr[#arr], {__index={islazy=true}})
+                            return ''
+                        end,
+                        1
+                    )
+                elseif key == '(' then
+                    args = args:gsub(RE.lazy..'(%b())',
+                        function(s)
+                            if #s==0 then
+                                Error.wrongLazy(match)
+                            end
 
-                        local result, _ = Eval.getStr(s, RE.swapdef)
-                        arr[#arr+1] = result
-                        return ''
-                    end,
-                    1
-                )
-            elseif key == RE.lazy then
-                args = args:gsub(RE.lazy..'(%g*)', '', 1)
-                local result, _ = Eval.getStr(
-                    match:gsub(RE.lazy, ''), RE.swapdef
-                )
-                if #result==0 then
-                    Error.wrongLazy(match)
+                            local result, _ = Eval.getStr(s, RE.swapdef)
+                            arr[#arr+1] = result
+                            return ''
+                        end,
+                        1
+                    )
+                else
+                    args = args:gsub(RE.lazy..'(%g*)', '', 1)
+                    local result, _ = Eval.getStr(
+                        match:gsub(RE.lazy, ''), RE.swapdef
+                    )
+                    if #result==0 then
+                        Error.wrongLazy(match)
+                    end
+
+                    arr[#arr+1] = result
                 end
-
-                arr[#arr+1] = result
             elseif key == '[' then
                 args = args:gsub(RE.islist,
                     function(s)
@@ -263,14 +266,13 @@ function Eval.swapString(str)
     local key = RE.swapchar..Eval.swapkey..RE.swapchar
     Eval.swapstr[key] = (
         str
-        :gsub('([\\])([fnrtv\\])',
+        :gsub('([\\])([fnrtv])',
             function(_, s)
                 if s == 'f' then return '\f'
                 elseif s == 'n' then return '\n'
                 elseif s == 'r' then return '\r'
                 elseif s == 't' then return '\t'
                 elseif s == 'v' then return '\v'
-                elseif s == '\\' then return '\\'
                 end
             end
         )
@@ -282,8 +284,9 @@ function Eval.swapStrings(args)
     local match = string.match(args, '[;\'\"]')
     while match and #args > 1 do
         local oldargs = args
+
         if  match == ';' then
-            args = args:gsub(RE.comment, '')
+            args = args:gsub(RE.comment, '', 1)
         elseif match == '"' then
             args = args:gsub(RE.dquote,
                 Eval.swapString, 1
@@ -296,12 +299,12 @@ function Eval.swapStrings(args)
         if args == oldargs then
             Error.unpairedQuotes(match)
         end
+
         match = string.match(args, '[;\'\"]')
     end
 
     return args
 end
-
 
 function Eval.cleanArgs(args)
     local swap = Eval.swapStrings(args..'\n')

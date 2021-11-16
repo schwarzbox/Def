@@ -63,7 +63,7 @@ end
 
 local function trace(scope, path, name)
     if scope[RE.tokendefined] then
-        return  scope[RE.tokendefined] ..'.'.. (path or name)
+        return  scope[RE.tokendefined] ..RE.errsep.. (path or name)
     else
         return path or name
     end
@@ -143,7 +143,6 @@ function D.def(t, predef, scope, mutate, lambda, path)
         return unpack(res)
 
     elseif defvar then
-
         Error.checkDefinition(defvar, mutate and 'mut' or 'def', t[1])
         Error.checkExpression(vbody, mutate and 'mut' or 'def', t[1])
 
@@ -626,6 +625,7 @@ function DD.if_(t, predef, scope)
 end
 
 -- switch
+
 function D.switch(t, predef, scope)
     if #t ~= 1 then
         Error.wrongNumberArgs('switch', 1)
@@ -636,7 +636,7 @@ function D.switch(t, predef, scope)
         defscope[k] = v
     end
 
-    local check, result, last
+    local check, result
     for cond, body in t[1]:gmatch(RE.defswitch) do
         check = Eval.eval(cond, predef, defscope)
 
@@ -662,7 +662,7 @@ function D.switch(t, predef, scope)
     if check == nil then
         Error.unableDefine('switch', t[1])
     else
-        Error.wrongDefault('switch', '(true) ("default")' )
+        Error.wrongDefault('switch', "(true) ('default')" )
     end
 end
 
@@ -1405,7 +1405,8 @@ function D.replace(t)
         end
     end
 
-    return string.gsub(t[1], t[2], t[3])
+    local res = string.gsub(t[1], t[2], t[3])
+    return res
 end
 
 function D.reverse(t)
@@ -1700,7 +1701,6 @@ function D.shell(t)
     return io.popen(t[1], t[2])
 end
 
-
 -- os
 
 function D.clock()
@@ -1875,7 +1875,7 @@ local function printer(value, output)
     else
         if type(value) == 'string' then
             output[#output+1]=(
-                '"'..Eval.getStr(value, RE.swapdef)..'" '
+                "'"..Eval.getStr(value, RE.swapdef).."' "
             )
         else
             output[#output+1]=(tostring(value)..' ')
@@ -1893,6 +1893,7 @@ function D.show(t)
 
     io.write(res)
     io.write('\n')
+
     return res
 end
 
@@ -1901,6 +1902,7 @@ for k,v in pairs(D) do
 end
 
 -- sugar
+
 Def[RE.tokenize('ARGS')] = arg
 Def[RE.tokenize('VERSION')] = settings.VERSION .. ' ('.. _VERSION .. ')'
 Def[RE.tokenize('#')] = D.len
@@ -1940,7 +1942,8 @@ Def[RE.tokenfor] = DD.for_
 Def[RE.tokentrue] = true
 Def[RE.tokenfalse] = false
 
--- -- bits
+-- bits
+
 Def[RE.tokenize('&')] = D.band
 Def[RE.tokenize('|')] = D.bor
 Def[RE.tokenize('~')] = D.bxor
