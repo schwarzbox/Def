@@ -63,7 +63,7 @@ end
 
 local function trace(scope, path, name)
     if scope[RE.tokendefined] then
-        return  scope[RE.tokendefined] ..RE.errsep.. (path or name)
+        return  scope[RE.tokendefined]..RE.errsep..(path or name)
     else
         return path or name
     end
@@ -1904,7 +1904,7 @@ end
 -- sugar
 
 Def[RE.tokenize('ARGS')] = arg
-Def[RE.tokenize('VERSION')] = settings.VERSION .. ' ('.. _VERSION .. ')'
+Def[RE.tokenize('VERSION')] = settings.VERSION..' ('.._VERSION ..')'
 Def[RE.tokenize('#')] = D.len
 Def[RE.tokenize('do')] = DD.do_
 Def[RE.tokenize('?')] = D.type
