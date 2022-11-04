@@ -21,7 +21,7 @@ end
 function Error.getError(message, scope)
     local path = 'root'
     if scope[RE.tokendefined] then
-        path = 'root'..RE.errsep.. scope[RE.tokendefined]
+        path = 'root'..RE.errsep..scope[RE.tokendefined]
     end
 
     return (
@@ -46,7 +46,7 @@ function Error.wrongCharInput(inp)
 end
 
 function Error.wrongChar(inp, char)
-    error('wrong char in '..inp..' | '.. char)
+    error('wrong char in '..inp..' | '..char)
 end
 
 function Error.wrongAction(inp)
@@ -59,7 +59,7 @@ end
 
 function Error.wrongType(action, arg, expected)
     error(
-        'bad argument #'..arg..' to \''..action..'\' expected | '.. expected
+        'bad argument #'..arg..' to \''..action..'\' expected | '..expected
     )
 end
 
@@ -72,11 +72,11 @@ function Error.wrongKey(action, arg)
 end
 
 function Error.wrongDefault(action, expected)
-    error('wrong default condition to \''..action..'\' expected | '.. expected)
+    error('wrong default condition to \''..action..'\' expected | '..expected)
 end
 
 function Error.wrongScope(action, expected)
-    error('wrong scope to \''..action..'\' expected | '.. expected)
+    error('wrong scope to \''..action..'\' expected | '..expected)
 end
 
 function Error.unpairedQuotes(char)

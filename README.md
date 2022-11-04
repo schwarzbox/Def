@@ -1,8 +1,8 @@
 # Def
 
-Programming language from Scheme family.
-
 v1.0
+
+Programming language from Scheme family.
 
 Def is implemented in Lua.
 
