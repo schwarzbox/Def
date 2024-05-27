@@ -164,7 +164,7 @@ Tests.tests = {
     {'(rad 45)', {math.rad(45)}},
     {'(round 3.1416 2)', {3.14}},
     {'((randomseed))', {true}},
-    {'(randomseed 2) (random 0 42)', {34}},
+    {'(randomseed 2) (random 0 42)', {33}},
     {'(pow 2 0.5)', {math.pow(2, 0.5)}},
     {'(sin -1)', {math.sin(-1)}},
     {'(sqrt 1)', {math.sqrt(1)}},
@@ -608,7 +608,7 @@ function Tests.run(Eval, Def)
 
         local exe, result = pcall(Tests.execute, Eval, Def, test)
         Tests.savederror = false
-        print(exe, result)
+
         if not exe then
             failed[#failed+1] = body..'\n'
         end

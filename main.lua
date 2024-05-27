@@ -4,13 +4,14 @@
 -- REPL (lua)
 -- main.lua
 
--- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua /Library/Frameworks/Lua-5.3/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.3/bin/../include
-
--- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua tests.lua /Library/Frameworks/Lua-5.3/bin/../lib/libluajit-5.1.a -I/Library/Frameworks/Lua-5.3/bin/../include/luajit-2.0 -pagezero_size 10000 -image_base 100000000
+-- with tests
+-- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua tests.lua /Library/Frameworks/Lua-5.4/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.4/bin/../include
+-- without tests
+-- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua /Library/Frameworks/Lua-5.4/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.4/bin/../include
 
 
 -- 1.1
--- line error
+-- error line number
 
 local settings = require('settings')
 
