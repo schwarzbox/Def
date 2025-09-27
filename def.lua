@@ -1893,6 +1893,7 @@ function D.show(t)
 
     io.write(res)
     io.write('\n')
+    io.flush()
 
     return res
 end

@@ -7,11 +7,14 @@
 -- with tests
 -- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua tests.lua /Library/Frameworks/Lua-5.4/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.4/bin/../include
 -- without tests
+-- main.lua comment/delete local Tests = require('tests')
+-- setting.lua comment/delete Settings.HELP .. '\n\t-test -t\trun tests'
+-- error.lua comment/delete local Tests = require('tests')
 -- luastatic main.lua settings.lua eval.lua re.lua def.lua error.lua /Library/Frameworks/Lua-5.4/bin/../lib/liblua.a -I/Library/Frameworks/Lua-5.4/bin/../include
 
 
 -- 1.1
--- error line number
+-- show line number when errors
 
 local settings = require('settings')
 
